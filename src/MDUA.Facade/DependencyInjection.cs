@@ -51,6 +51,8 @@ namespace MDUA.Facade
             // ✅ MISSING LINE ADDED: Required for stock transaction logging
             services.AddScoped<IInventoryTransactionDataAccess, InventoryTransactionDataAccess>();
 
+            
+            services.AddScoped<IBulkPurchaseOrderDataAccess, BulkPurchaseOrderDataAccess>();
             // Facade Layer
             services.AddServiceFacade();
 

@@ -1,0 +1,62 @@
+﻿/* Sticky Sidebar behavior */
+.sticky-panel {
+    top: 20px;
+    z-index: 100;
+}
+
+/* Table styling adjustments */
+.table-v-middle td {
+    vertical-align: middle;
+}
+
+/* Variant row transitions */
+.variant-row {
+    transition: background-color 0.2s;
+}
+
+    .variant-row:hover {
+        background-color: #f8f9fa;
+    }
+
+/* Badge spacing */
+.badge-stock {
+    margin-left: 8px;
+    font-size: 0.75em;
+}
+/* Force the backdrop to be lower */
+.modal-backdrop {
+    z-index: 1040 !important;
+}
+
+/* Force the modal dialog to be higher */
+.modal-content, .modal-dialog {
+    z-index: 1100 !important;
+}
+
+/* ... existing styles ... */
+
+.btn-xs {
+    padding: 0.2rem 0.4rem;
+    font-size: 0.75rem;
+    border-radius: 0.2rem;
+}
+
+.receive-form-row {
+    animation: fadeIn 0.3s ease-in-out;
+}
+
+    .receive-form-row td {
+        box-shadow: inset 0 0 5px rgba(0,0,0,0.05);
+    }
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-5px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
