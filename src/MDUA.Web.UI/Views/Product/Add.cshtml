@@ -1,7 +1,7 @@
 ﻿@model dynamic
 @{
-    Layout = "_AdminLayout";
-    ViewData["Title"] = "Add Product";
+Layout = "_AdminLayout";
+ViewData["Title"] = "Add Product";
 }
 
 <div class="d-flex justify-content-between align-items-center mb-4">
@@ -81,10 +81,10 @@
                             <option value="">-- Select Category --</option>
                             @if (Model.Categories != null)
                             {
-                                foreach (var c in Model.Categories)
-                                {
-                                    <option value="@c.Id">@c.Name</option>
-                                }
+                            foreach (var c in Model.Categories)
+                            {
+                            <option value="@c.Id">@c.Name</option>
+                            }
                             }
                         </select>
                     </div>
@@ -101,10 +101,10 @@
                                 <option value="">-- Select Attribute --</option>
                                 @if (Model.Attributes != null)
                                 {
-                                    foreach (var a in Model.Attributes)
-                                    {
-                                        <option value="@a.Id">@a.Name</option>
-                                    }
+                                foreach (var a in Model.Attributes)
+                                {
+                                <option value="@a.Id">@a.Name</option>
+                                }
                                 }
                             </select>
                             <div class="attribute-values-container bg-white rounded border p-2 small"></div>
@@ -132,16 +132,16 @@
 </div>
 
 @section Scripts {
-    <script>
-        window.productConfig = {
-            urls: {
-                getAttributeValues: '@Url.Action("GetAttributeValues", "Product")',
-                getVariantsPartial: '@Url.Action("GetVariantsPartial", "Product")',
-                addSingleVariant: '@Url.Action("AddSingleVariant", "Product")',
-                getMissingAttributes: '@Url.Action("GetMissingAttributes", "Product")',
-                addAttributeToVariant: '@Url.Action("AddAttributeToVariant", "Product")'
-            }
-        };
-    </script>
-    <script src="~/js/product.js"></script>
+<script>
+    window.productConfig = {
+        urls: {
+            getAttributeValues: '@Url.Action("GetAttributeValues", "Product")',
+            getVariantsPartial: '@Url.Action("GetVariantsPartial", "Product")',
+            addSingleVariant: '@Url.Action("AddSingleVariant", "Product")',
+            getMissingAttributes: '@Url.Action("GetMissingAttributes", "Product")',
+            addAttributeToVariant: '@Url.Action("AddAttributeToVariant", "Product")'
+        }
+    };
+</script>
+<script src="~/js/product.js"></script>
 }

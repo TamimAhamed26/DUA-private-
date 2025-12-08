@@ -1,0 +1,113 @@
+﻿<div id="admin-chat-panel" style="display:none; position: fixed; bottom: 20px; right: 20px; width: 750px; height: 500px; background: white; border: 1px solid #ccc; box-shadow: 0 0 20px rgba(0,0,0,0.2); z-index: 10000; border-radius: 8px; display: flex; font-family: sans-serif;">
+
+    <div style="width: 250px; background: #f8fafc; border-right: 1px solid #e2e8f0; display: flex; flex-direction: column;">
+        <div style="padding: 15px; background: #fff; border-bottom: 1px solid #e2e8f0; font-weight: bold; display: flex; justify-content: space-between; align-items: center;">
+            <span>Active Chats</span>
+            <button onclick="loadActiveChats()" title="Refresh" style="border:none; background:none; cursor:pointer; font-size:1.2rem;">↻</button>
+        </div>
+        <div id="admin-chat-list" style="flex: 1; overflow-y: auto;"></div>
+    </div>
+
+    <div style="flex: 1; display: flex; flex-direction: column;">
+        <div style="padding: 15px; background: #2563eb; color: white; font-weight: bold; display: flex; justify-content: space-between; align-items: center;">
+            <span id="chat-current-guest">Select a conversation...</span>
+            <button onclick="$('#admin-chat-panel').hide()" style="background:none;border:none;color:white;cursor:pointer;font-size:1.5rem;">&times;</button>
+        </div>
+
+        <div id="admin-chat-history" style="flex: 1; padding: 20px; overflow-y: auto; background: #fff; display: flex; flex-direction: column; gap: 10px;">
+            <div style="text-align:center; color: #999; margin-top: 50px;">Select a user from the left to start chatting.</div>
+        </div>
+
+        <div style="padding: 15px; border-top: 1px solid #eee; display: flex; background: #f8fafc;">
+            <input type="hidden" id="current-chat-session-id" />
+            <input type="hidden" id="current-chat-guid" />
+            <input type="text" id="admin-chat-input" placeholder="Type a reply..." style="flex: 1; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; outline: none;">
+            <button id="admin-send-btn" style="margin-left: 10px; background: #2563eb; color: white; border: none; padding: 0 20px; border-radius: 6px; cursor: pointer; font-weight: bold;">Send</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    var adminHub = new signalR.HubConnectionBuilder()
+        .withUrl("/supportHub")
+        .withAutomaticReconnect()
+        .build();
+
+    adminHub.start().then(() => console.log("Admin Chat Ready"));
+
+    adminHub.on("ReceiveMessage", function (user, message, sessionGuid) {
+        loadActiveChats();
+        if ($('#current-chat-guid').val().toLowerCase() === sessionGuid.toLowerCase()) {
+            appendAdminBubble(user, message, false);
+        }
+    });
+
+    function loadActiveChats() {
+        $.get('/chat/active-sessions', function (data) {
+            $('#admin-chat-list').empty();
+            if(!data || data.length === 0) {
+                 $('#admin-chat-list').append('<div style="padding:15px; color:#666; text-align:center;">No active chats</div>');
+                 return;
+            }
+            data.forEach(function (session) {
+                let time = new Date(session.lastMessageAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                let isActive = session.id == $('#current-chat-session-id').val() ? 'background-color: #e0f2fe;' : '';
+                let html = `
+                    <div onclick="openChatSession('${session.id}', '${session.sessionGuid}', '${session.guestName}')"
+                         style="padding: 15px; border-bottom: 1px solid #f1f5f9; cursor: pointer; transition: background 0.2s; ${isActive}"
+                         onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='${isActive ? '#e0f2fe' : 'transparent'}'">
+                        <div style="font-weight: 600; color: #334155; margin-bottom: 4px;">${session.guestName}</div>
+                        <div style="font-size: 0.8rem; color: #64748b; display: flex; justify-content: space-between;">
+                            <span>${session.status}</span><span>${time}</span>
+                        </div>
+                    </div>`;
+                $('#admin-chat-list').append(html);
+            });
+        });
+    }
+
+    function openChatSession(id, guid, name) {
+        $('#current-chat-session-id').val(id);
+        $('#current-chat-guid').val(guid);
+        $('#chat-current-guest').text(name);
+        $('#admin-chat-history').html('<div style="text-align:center; padding:20px;">Loading history...</div>');
+        loadActiveChats();
+
+        // 1. Notify Guest that Admin Joined
+        const adminName = "Support Agent"; // Or @User.Identity.Name
+        adminHub.invoke("AdminJoinSession", adminName, guid);
+
+        // 2. Load History
+        $.get('/chat/history?sessionId=' + id, function (messages) {
+            $('#admin-chat-history').empty();
+            messages.forEach(m => appendAdminBubble(m.senderName, m.messageText, m.isFromAdmin));
+        });
+    }
+
+    $('#admin-send-btn').click(sendAdminReply);
+    $('#admin-chat-input').keypress(function (e) { if (e.which == 13) sendAdminReply(); });
+
+    function sendAdminReply() {
+        const msg = $('#admin-chat-input').val().trim();
+        const guid = $('#current-chat-guid').val();
+        if (!msg || !guid) return;
+
+        const adminName = "Support Agent";
+
+        adminHub.invoke("SendReplyToUser", adminName, msg, guid)
+            .then(function() {
+                appendAdminBubble("Me", msg, true);
+                $('#admin-chat-input').val('');
+            });
+    }
+
+    function appendAdminBubble(user, text, isSelf) {
+        let align = isSelf ? 'align-self: flex-end;' : 'align-self: flex-start;';
+        let bg = isSelf ? 'background: #2563eb; color: white;' : 'background: #f1f5f9; color: #1e293b;';
+        let radius = isSelf ? 'border-radius: 12px 12px 0 12px;' : 'border-radius: 12px 12px 12px 0;';
+        let html = `<div style="${align} max-width: 70%; ${bg} padding: 10px 14px; ${radius} font-size: 0.95rem; line-height: 1.5; margin-bottom: 5px;">${text}</div>
+                    <div style="${align} font-size: 0.7rem; color: #94a3b8; margin-bottom: 8px;">${isSelf ? 'Sent' : user}</div>`;
+        $('#admin-chat-history').append(html);
+        $('#admin-chat-history').scrollTop($('#admin-chat-history')[0].scrollHeight);
+    }
+</script>

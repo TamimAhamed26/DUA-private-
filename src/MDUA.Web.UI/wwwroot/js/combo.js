@@ -919,3 +919,151 @@ $('input[name="PostalCode"]').on('input keyup blur', function () {
         });
     }
 });
+// --- CHAT WIDGET LOGIC ---
+let chatConnection = null;
+let chatSessionId = localStorage.getItem("chatSessionId");
+let chatUserName = localStorage.getItem("chatUserName");
+
+// 1. Toggle Options Menu
+$('#support-widget-btn').click(function () {
+    $(this).toggleClass('active');
+    const menu = $('#support-options');
+
+    if (menu.hasClass('show')) {
+        // Close Everything
+        menu.removeClass('show');
+        $('#live-chat-box').fadeOut();
+        $(this).find('i').removeClass('fa-times').addClass('fa-headset');
+    } else {
+        // Show Menu, Change Icon to X
+        menu.addClass('show');
+        $(this).find('i').removeClass('fa-headset').addClass('fa-times');
+
+        // If chat was already open (maybe minimized?), close it to show menu
+        $('#live-chat-box').hide();
+    }
+});
+
+// 2. Open Live Chat from Menu
+$('#btn-open-live-chat').click(function () {
+    $('#support-options').removeClass('show'); // Hide menu
+    $('#live-chat-box').fadeIn().css('display', 'flex'); // Show chat
+
+    // Auto-init logic
+    checkChatState();
+});
+
+// 3. Close Chat Box (Return to button state)
+$('#chat-close-btn').click(function () {
+    $('#live-chat-box').fadeOut();
+    $('#support-widget-btn').removeClass('active');
+    $('#support-widget-btn').find('i').removeClass('fa-times').addClass('fa-headset');
+});
+
+// 4. Initial State Check (Name vs Chat)
+function checkChatState() {
+    if (chatUserName) {
+        showChatInterface();
+        initSignalR();
+        setTimeout(() => $('#chat-input-field').focus(), 300);
+    } else {
+        $('#chat-name-screen').css('display', 'flex');
+        $('#chat-messages-list').hide();
+        $('#chat-footer').css('display', 'none');
+    }
+}
+
+// 5. Handle Name Submission
+$('#chat-start-btn').click(function () {
+    const name = $('#chat-guest-name').val().trim();
+    if (name) {
+        setUserName(name);
+    } else {
+        $('#chat-guest-name').css('border-color', 'red');
+    }
+});
+
+$('#chat-skip-btn').click(function () {
+    setUserName("Guest");
+});
+
+function setUserName(name) {
+    chatUserName = name;
+    localStorage.setItem("chatUserName", name);
+    showChatInterface();
+    initSignalR();
+}
+
+function showChatInterface() {
+    $('#chat-name-screen').hide();
+    $('#chat-messages-list').css('display', 'flex');
+    $('#chat-footer').css('display', 'flex');
+}
+
+// 6. SignalR Connection
+function initSignalR() {
+    if (chatConnection) return; // Already connected
+
+    if (!chatSessionId) {
+        chatSessionId = crypto.randomUUID();
+        localStorage.setItem("chatSessionId", chatSessionId);
+    }
+
+    if (typeof signalR === 'undefined') return;
+
+    chatConnection = new signalR.HubConnectionBuilder()
+        .withUrl("/supportHub?sessionId=" + chatSessionId)
+        .withAutomaticReconnect()
+        .build();
+
+    chatConnection.on("ReceiveReply", function (adminName, message) {
+        // If chat is closed, maybe pulse the button?
+        if (!$('#live-chat-box').is(':visible')) {
+            $('#support-widget-btn').addClass('active');
+        }
+        appendCustomerMessage(adminName, message, 'incoming');
+    });
+
+    chatConnection.on("ReceiveSystemMessage", function (message) {
+        const html = `<div class="msg-system">${message}</div>`;
+        $('#chat-messages-list').append(html);
+        scrollToBottom();
+    });
+
+    chatConnection.start().catch(err => console.error(err.toString()));
+}
+
+// 7. Send Message
+$('#chat-send-btn').click(sendCustomerMessage);
+$('#chat-input-field').keypress(function (e) { if (e.which == 13) sendCustomerMessage(); });
+
+function sendCustomerMessage() {
+    const msg = $('#chat-input-field').val().trim();
+    if (msg && chatConnection) {
+        chatConnection.invoke("SendMessageToAdmin", chatUserName, msg, chatSessionId)
+            .catch(err => console.error(err));
+
+        appendCustomerMessage("You", msg, 'outgoing');
+        $('#chat-input-field').val('');
+    }
+}
+
+function appendCustomerMessage(sender, text, type) {
+    const container = $('#chat-messages-list');
+    let senderHtml = type === 'incoming' ? `<div class="msg-sender-name">${sender}</div>` : '';
+
+    const html = `
+            <div class="msg-${type}">
+                ${senderHtml}
+                <div class="msg-bubble">${text}</div>
+            </div>`;
+
+    container.append(html);
+    scrollToBottom();
+}
+
+function scrollToBottom() {
+    const body = document.getElementById("chat-body");
+    if (body) body.scrollTop = body.scrollHeight;
+
+}

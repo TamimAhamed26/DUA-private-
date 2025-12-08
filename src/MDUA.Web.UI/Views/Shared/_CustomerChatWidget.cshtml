@@ -1,0 +1,338 @@
+﻿<style>
+    /* --- Floating Button --- */
+    .support-btn {
+        position: fixed;
+        bottom: 30px;
+        right: 30px;
+        width: 60px;
+        height: 60px;
+        background: #2563eb;
+        color: white;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 28px;
+        box-shadow: 0 4px 15px rgba(37, 99, 235, 0.4);
+        cursor: pointer;
+        z-index: 10000;
+        transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+        .support-btn:hover {
+            transform: scale(1.1);
+        }
+
+        .support-btn.active {
+            transform: rotate(45deg);
+            background: #ef4444;
+        }
+
+    /* --- Options Menu (The missing part) --- */
+    .support-options-menu {
+        position: fixed;
+        bottom: 100px;
+        right: 30px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        z-index: 9999;
+        opacity: 0;
+        visibility: hidden;
+        transform: translateY(20px);
+        transition: all 0.3s ease;
+    }
+
+        .support-options-menu.show {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+        }
+
+    .support-option {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 20px;
+        background: white;
+        border-radius: 30px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        text-decoration: none;
+        color: #333;
+        font-weight: 600;
+        cursor: pointer;
+        transition: transform 0.2s;
+        min-width: 160px;
+        font-family: 'Inter', sans-serif;
+    }
+
+        .support-option:hover {
+            transform: translateX(-5px);
+            background: #f8fafc;
+        }
+
+        .support-option.whatsapp i {
+            color: #25D366;
+            font-size: 22px;
+        }
+
+        .support-option.live-chat i {
+            color: #2563eb;
+            font-size: 20px;
+        }
+
+    /* --- Chat Box (Hidden until clicked) --- */
+    .chat-box {
+        display: none;
+        position: fixed;
+        bottom: 100px;
+        right: 30px;
+        width: 380px;
+        height: 550px;
+        background: #fff;
+        border-radius: 16px;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+        z-index: 9999;
+        flex-direction: column;
+        overflow: hidden;
+        border: 1px solid #f3f4f6;
+        font-family: 'Inter', sans-serif;
+    }
+
+    .chat-header {
+        background: linear-gradient(135deg, #2563eb, #1d4ed8);
+        color: white;
+        padding: 18px 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .chat-title {
+        font-weight: 600;
+        font-size: 1.1rem;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .chat-close {
+        background: none;
+        border: none;
+        color: white;
+        font-size: 24px;
+        cursor: pointer;
+        line-height: 1;
+    }
+
+    .chat-body {
+        flex: 1;
+        padding: 15px;
+        background: #f8fafc;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    /* Welcome Screen */
+    .chat-welcome {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        text-align: center;
+        padding: 30px;
+    }
+
+        .chat-welcome h4 {
+            color: #1e293b;
+            margin-bottom: 10px;
+        }
+
+        .chat-welcome p {
+            color: #64748b;
+            font-size: 0.95rem;
+            margin-bottom: 20px;
+        }
+
+        .chat-welcome input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            outline: none;
+            font-size: 1rem;
+            transition: border-color 0.2s;
+        }
+
+            .chat-welcome input:focus {
+                border-color: #2563eb;
+            }
+
+        .chat-welcome button {
+            width: 100%;
+            padding: 12px;
+            background: #2563eb;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+            .chat-welcome button:hover {
+                background: #1d4ed8;
+            }
+
+    /* Messages */
+    .msg-bubble {
+        max-width: 85%;
+        padding: 10px 15px;
+        border-radius: 12px;
+        font-size: 0.95rem;
+        line-height: 1.5;
+        word-wrap: break-word;
+        position: relative;
+    }
+
+    .msg-incoming {
+        align-self: flex-start;
+    }
+
+        .msg-incoming .msg-bubble {
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            color: #1e293b;
+            border-bottom-left-radius: 2px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        }
+
+    .msg-sender-name {
+        font-size: 0.75rem;
+        color: #64748b;
+        margin-bottom: 4px;
+        margin-left: 2px;
+        font-weight: 600;
+    }
+
+    .msg-outgoing {
+        align-self: flex-end;
+    }
+
+        .msg-outgoing .msg-bubble {
+            background: #2563eb;
+            color: white;
+            border-bottom-right-radius: 2px;
+            box-shadow: 0 2px 5px rgba(37, 99, 235, 0.2);
+        }
+
+    .msg-system {
+        align-self: center;
+        font-size: 0.8rem;
+        color: #64748b;
+        background: #e2e8f0;
+        padding: 5px 15px;
+        border-radius: 20px;
+        margin: 10px 0;
+        text-align: center;
+    }
+
+    .chat-footer {
+        padding: 15px;
+        background: white;
+        border-top: 1px solid #e2e8f0;
+        display: none;
+        gap: 10px;
+    }
+
+        .chat-footer input {
+            flex: 1;
+            padding: 12px 15px;
+            border: 1px solid #e2e8f0;
+            border-radius: 25px;
+            outline: none;
+            background: #f8fafc;
+            font-size: 0.95rem;
+        }
+
+            .chat-footer input:focus {
+                border-color: #2563eb;
+                background: #fff;
+            }
+
+        .chat-footer button {
+            width: 45px;
+            height: 45px;
+            border-radius: 50%;
+            border: none;
+            background: #2563eb;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 18px;
+            box-shadow: 0 2px 5px rgba(37, 99, 235, 0.3);
+        }
+
+    @@media (max-width: 480px) {
+        .chat-box {
+            width: 100%;
+            height: 100%;
+            bottom: 0;
+            right: 0;
+            border-radius: 0;
+        }
+
+        .support-btn {
+            bottom: 20px;
+            right: 20px;
+        }
+    }
+</style>
+
+<div id="support-widget-btn" class="support-btn">
+    <i class="fas fa-headset"></i>
+</div>
+
+<div id="support-options" class="support-options-menu">
+    <a href="https://wa.me/8801700000000" target="_blank" class="support-option whatsapp">
+        <i class="fab fa-whatsapp"></i>
+        <span>WhatsApp</span>
+    </a>
+    <div id="btn-open-live-chat" class="support-option live-chat">
+        <i class="fas fa-comments"></i>
+        <span>Live Chat</span>
+    </div>
+</div>
+
+<div id="live-chat-box" class="chat-box">
+    <div class="chat-header">
+        <div class="chat-title">
+            <i class="fas fa-headset"></i> Customer Support
+        </div>
+        <button id="chat-close-btn" class="chat-close">&times;</button>
+    </div>
+
+    <div id="chat-body" class="chat-body">
+        <div id="chat-name-screen" class="chat-welcome">
+            <h4>Welcome! 👋</h4>
+            <p>Please enter your name to start chatting with us.</p>
+            <input type="text" id="chat-guest-name" placeholder="Your Name" />
+            <button id="chat-start-btn">Start Conversation</button>
+            <button id="chat-skip-btn" style="background:transparent; color:#94a3b8; margin-top:15px; width:auto;">Skip for now</button>
+        </div>
+
+        <div id="chat-messages-list" style="display:none; flex-direction:column; gap:12px; padding-bottom: 10px;">
+        </div>
+    </div>
+
+    <div class="chat-footer" id="chat-footer">
+        <input type="text" id="chat-input-field" placeholder="Type a message..." autocomplete="off">
+        <button id="chat-send-btn"><i class="fas fa-paper-plane"></i></button>
+    </div>
+</div>
