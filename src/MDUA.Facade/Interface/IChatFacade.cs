@@ -29,5 +29,6 @@ namespace MDUA.Facade.Interface
         /// If readerIsAdmin = true, it marks user messages as read.
         /// If readerIsAdmin = false, it marks admin messages as read.
         void MarkMessagesAsRead(int sessionId, bool readerIsAdmin);
+        ChatSession GetSessionByGuid(Guid sessionGuid);
     }
 }

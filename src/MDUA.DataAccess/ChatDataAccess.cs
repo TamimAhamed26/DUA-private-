@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Data;
 using System.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
+using static MDUA.Entities.ChatSession;
 
 namespace MDUA.DataAccess
 {
@@ -80,13 +81,47 @@ namespace MDUA.DataAccess
             }
         }
 
+        // In MDUA.DataAccess/ChatDataAccess.cs
+
         public List<ChatSession> GetActiveSessions()
         {
-            // Returns sessions that are Active and not 'Closed'
-            string query = "SELECT * FROM ChatSession WHERE IsActive = 1 AND Status != 'Closed' ORDER BY LastMessageAt DESC";
+            // Updated Query: Includes a subquery to count unread messages from the Guest
+            string query = @"
+        SELECT 
+            s.*,
+            (SELECT COUNT(*) FROM ChatMessage m 
+             WHERE m.ChatSessionId = s.Id 
+             AND m.IsRead = 0 
+             AND m.IsFromAdmin = 0) AS UnreadCount
+        FROM ChatSession s 
+        WHERE s.IsActive = 1 
+        AND s.Status != 'Closed' 
+        ORDER BY 
+            CASE WHEN (SELECT COUNT(*) FROM ChatMessage m WHERE m.ChatSessionId = s.Id AND m.IsRead = 0 AND m.IsFromAdmin = 0) > 0 THEN 0 ELSE 1 END, 
+            s.LastMessageAt DESC";
+
             using (SqlCommand cmd = GetSQLCommand(query))
             {
-                return GetList(cmd); // Assumes GetList is a helper returning List<ChatSession>
+                // We use a custom filler here because we added the extra 'UnreadCount' column
+                SqlDataReader reader;
+                SelectRecords(cmd, out reader);
+
+                var list = new List<ChatSession>();
+                using (reader)
+                {
+                    while (reader.Read())
+                    {
+                        var session = new ChatSession();
+                        // Call your existing helper
+                        FillChatSession(session, reader);
+
+                        // Manually fill the new property
+                        session.UnreadCount = reader.GetInt32(reader.GetOrdinal("UnreadCount"));
+
+                        list.Add(session);
+                    }
+                }
+                return list;
             }
         }
 
@@ -96,15 +131,26 @@ namespace MDUA.DataAccess
 
         public long SaveMessage(ChatMessage message)
         {
+            // 👇 UPDATED QUERY: 
+            // This now updates the 'GuestName' in the ChatSession table 
+            // whenever a message is received from the user (IsFromAdmin = 0).
             string query = @"
                 INSERT INTO ChatMessage 
                 (ChatSessionId, SenderId, SenderName, MessageText, IsFromAdmin, IsRead, SentAt)
                 VALUES 
                 (@ChatSessionId, @SenderId, @SenderName, @MessageText, @IsFromAdmin, 0, GETDATE());
                 
-                -- Update the parent session's timestamp
+                -- Update the parent session's timestamp AND GuestName
                 UPDATE ChatSession 
-                SET LastMessageAt = GETDATE(), Status = 'Active' 
+                SET 
+                    LastMessageAt = GETDATE(), 
+                    Status = 'Active',
+                    GuestName = CASE 
+                        -- Only update name if message is from User AND name is not empty
+                        WHEN @IsFromAdmin = 0 AND @SenderName IS NOT NULL AND LEN(@SenderName) > 0 
+                        THEN @SenderName 
+                        ELSE GuestName 
+                    END
                 WHERE Id = @ChatSessionId;
 
                 SELECT CAST(SCOPE_IDENTITY() as bigint);";
@@ -120,7 +166,6 @@ namespace MDUA.DataAccess
                 return (long)SelectScaler(cmd);
             }
         }
-
         public List<ChatMessage> GetMessagesBySessionId(int sessionId)
         {
             string query = "SELECT * FROM ChatMessage WHERE ChatSessionId = @ChatSessionId ORDER BY SentAt ASC";

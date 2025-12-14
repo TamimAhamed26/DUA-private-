@@ -3,6 +3,7 @@ using MDUA.DataAccess;
 using MDUA.DataAccess.Interface;
 using MDUA.Facade;
 using MDUA.Facade.Interface;
+
 namespace MDUA.Facade
 {
     public static class DependencyInjection
@@ -27,6 +28,7 @@ namespace MDUA.Facade
             services.AddScoped<IProductDiscountDataAccess, ProductDiscountDataAccess>();
             services.AddScoped<IProductCategoryDataAccess, ProductCategoryDataAccess>();
             services.AddScoped<IProductAttributeDataAccess, ProductAttributeDataAccess>();
+            services.AddScoped<IProductVideoDataAccess, ProductVideoDataAccess>();
 
             // Variant & Stock
             services.AddScoped<IVariantImageDataAccess, VariantImageDataAccess>();
@@ -55,6 +57,16 @@ namespace MDUA.Facade
 
             services.AddScoped<IChatDataAccess, MDUA.DataAccess.ChatDataAccess>();
 
+            // Payment Related
+            services.AddScoped<IPaymentMethodDataAccess, PaymentMethodDataAccess>();
+            services.AddScoped<ICompanyPaymentMethodDataAccess, CompanyPaymentMethodDataAccess>();
+
+            // ✅ ADDED THIS (Required for PaymentFacade)
+            services.AddScoped<ICustomerPaymentDataAccess, CustomerPaymentDataAccess>();
+
+            //Global Settings
+            services.AddScoped<IGlobalSettingDataAccess, GlobalSettingDataAccess>();
+
             // Facade Layer
             services.AddServiceFacade();
 
@@ -69,10 +81,12 @@ namespace MDUA.Facade
             services.AddScoped<ICustomerFacade, CustomerFacade>();
             services.AddScoped<ICompanyFacade, CompanyFacade>();
             services.AddScoped<IChatFacade, ChatFacade>();
-
-
-            // Register Purchase Facade
             services.AddScoped<IPurchaseFacade, PurchaseFacade>();
+            services.AddScoped<IPaymentMethodFacade, PaymentMethodFacade>(); // Admin setup facade
+            services.AddScoped<ISettingsFacade, SettingsFacade>();
+
+            // ✅ ADDED THIS (Required for OrderController)
+            services.AddScoped<IPaymentFacade, PaymentFacade>();
         }
     }
 }

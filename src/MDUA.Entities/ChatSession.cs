@@ -1,15 +1,21 @@
-﻿using System;
+﻿using MDUA.Entities.Bases;
+using MDUA.Entities.List;
+using MDUA.Framework;
+using System;
+using System.ComponentModel.DataAnnotations.Schema;
 using System.Runtime.Serialization;
 using System.ServiceModel;
-
-using MDUA.Framework;
-using MDUA.Entities.Bases;
-using MDUA.Entities.List;
 
 namespace MDUA.Entities
 {
 	public partial class ChatSession 
 	{
-		
-	}
+
+        [NotMapped]
+        public int UnreadCount { get; set; }
+
+    }
+
+
+
 }

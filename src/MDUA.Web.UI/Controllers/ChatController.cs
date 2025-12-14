@@ -14,7 +14,27 @@ namespace MDUA.Web.UI.Controllers
         {
             _chatFacade = chatFacade;
         }
+        [HttpGet]
+        [Route("chat/guest-history")]
+        [AllowAnonymous]
+        public IActionResult GetGuestHistory(string sessionGuid)
+        {
+            if (!Guid.TryParse(sessionGuid, out Guid guid)) return BadRequest();
 
+            // 1. Find the session ID using the GUID
+            var session = _chatFacade.GetSessionByGuid(guid);
+
+            // ✅ FIX: If session doesn't exist (New or Expired User), return Empty List, NOT 404
+            if (session == null)
+            {
+                return Ok(new List<object>());
+            }
+
+            // 2. Get messages
+            var history = _chatFacade.GetChatHistory(session.Id);
+
+            return Json(history);
+        }
         [HttpGet]
         [Route("chat/active-sessions")]
         public IActionResult GetActiveSessions()

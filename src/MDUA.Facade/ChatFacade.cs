@@ -102,6 +102,10 @@ namespace MDUA.Facade
             _chatDataAccess.MarkMessagesAsRead(sessionId, targetIsAdminMessages);
         }
 
+        public ChatSession GetSessionByGuid(Guid sessionGuid)
+        {
+            return _chatDataAccess.GetSessionByGuid(sessionGuid);
+        }
         #endregion
 
         public void Dispose()
