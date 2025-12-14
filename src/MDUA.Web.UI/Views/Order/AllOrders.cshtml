@@ -10,10 +10,8 @@
 
 @Html.AntiForgeryToken()
 
-<!-- WRAPPER START -->
 <div class="orders-wrapper">
 
-    <!-- 1. FIXED HEADER -->
     <div class="orders-header d-flex justify-content-between align-items-center">
         <div>
             <h2 class="fw-bold mb-0">Order List</h2>
@@ -28,10 +26,8 @@
         </div>
     }
 
-    <!-- 2. SCROLLABLE CARD CONTAINER -->
     <div class="glass-card-fill">
 
-        <!-- The Actual Scrollable Table Area -->
         <div class="table-scroll-lock">
             <table class="table table-hover mb-0 align-middle products-table">
                 <thead>
@@ -56,7 +52,6 @@
                             string orderIdDisplay = order.SalesOrderId ?? order.Id.ToString();
                             string orderType = order.SalesChannelId == 1 ? "Online" : "Direct";
 
-                            // ✅ FIX 1: Use the Helper Function instead of .ToString()
                             string displayStatus = order.Status == "Draft" ? "Pending" : order.Status;
                             string statusBadgeClass = displayStatus == "Confirmed" ? "bg-success text-white" : "bg-warning text-dark";
 
@@ -109,49 +104,58 @@
                             </tr>
 
                             <tr class="collapse bg-light shadow-sm" id="@collapseId">
-                                @* Removed border-start border-4 border-primary *@
                                 <td colspan="7" class="p-3 bg-light">
                                     <div class="d-flex align-items-center gap-3 ps-3">
                                         <span class="text-uppercase small fw-bold text-muted">Actions:</span>
 
+                                        @{
+                                            // ✅ CONSTRUCT FULL ADDRESS STRING
+                                            // Format: Country, Divison, City, Thana, SubOffice, Street, PostalCode
+                                            var addrParts = new List<string>();
+                                            if (!string.IsNullOrWhiteSpace(order.Country)) addrParts.Add(order.Country);
+                                            if (!string.IsNullOrWhiteSpace(order.Divison)) addrParts.Add(order.Divison);
+                                            if (!string.IsNullOrWhiteSpace(order.City)) addrParts.Add(order.City);
+                                            if (!string.IsNullOrWhiteSpace(order.Thana)) addrParts.Add(order.Thana);
+                                            if (!string.IsNullOrWhiteSpace(order.SubOffice)) addrParts.Add(order.SubOffice);
+                                            if (!string.IsNullOrWhiteSpace(order.Street)) addrParts.Add(order.Street);
+                                            if (!string.IsNullOrWhiteSpace(order.PostalCode)) addrParts.Add(order.PostalCode);
+
+                                            string fullAddress = string.Join(", ", addrParts);
+                                        }
+
                                         <button type="button" class="btn btn-sm btn-white border shadow-sm"
                                                 data-bs-toggle="modal" data-bs-target="#detailsModal"
-                                                @* --- ID & Status --- *@
                                                 data-id="@orderIdDisplay"
                                                 data-status="@displayStatus"
                                                 data-type="@orderType"
-                                                @* --- Customer Info --- *@
+                                                @* --- Customer & Address IDs + Details --- *@
                                                 data-cust-id="@order.CompanyCustomerId"
-                                                @* ✅ FIX 2: AddressId is int, so remove '?.'. We check for 0 instead. *@
+                                                data-cust-name="@order.CustomerName" @* ✅ NEW *@
                                                 data-addr-id="@(order.AddressId == 0 ? "N/A" : order.AddressId.ToString())"
-                                                @* --- Financials --- *@
+                                                data-full-addr="@fullAddress" @* ✅ NEW *@
                                                 data-total="@FormatAmount(order.TotalAmount)"
                                                 data-net="@FormatAmount(order.NetAmount)"
-                                                @* ✅ FIX 1: Use 0M (Decimal Literal) and handle potential non-nullable types gracefully *@
                                                 data-discount="@FormatAmount(order.TotalAmount - order.NetAmount)"
-                                                @* --- Audit --- *@
                                                 data-created-by="@(order.CreatedBy ?? "System")"
                                                 data-created-at="@FormatDate(order.CreatedAt)"
                                                 data-updated-by="@(order.UpdatedBy ?? "-")"
                                                 data-updated-at="@FormatDate(order.UpdatedAt)"
-                                                @* --- Tech --- *@
                                                 data-ip="@(order.IPAddress ?? "N/A")"
                                                 data-session="@(order.SessionId ?? "N/A")">
                                             <i class="fas fa-eye text-primary me-1"></i> View Details
                                         </button>
+
                                         <button type="button" class="btn btn-sm btn-white border shadow-sm"
                                                 onclick="openAdvanceModal(this)"
                                                 data-order-id="@order.Id"
                                                 data-order-ref="@orderIdDisplay"
                                                 data-cust-id="@order.CompanyCustomerId"
-                                                @* 🔴 OLD: data-net="@FormatAmount(order.NetAmount)" *@
-                                                @* 🟢 NEW: Use FormatRaw *@
                                                 data-net="@FormatRaw(order.NetAmount)"
-                                                @* 🔴 OLD: data-paid="@FormatAmount(order.PaidAmount)" *@
-                                                @* 🟢 NEW: Use FormatRaw *@
                                                 data-paid="@FormatRaw(order.PaidAmount)"
-                                                @* ✅ Delivery is already decimal in logic, but safe to format *@
-                                                data-delivery="@FormatRaw(order.DeliveryCharge)">
+                                                data-delivery="@FormatRaw(order.DeliveryCharge)"
+                                                @* ✅ NEW: Passing Product Price and Discount *@
+                                                data-product-price="@FormatRaw(order.TotalAmount - order.DeliveryCharge)"
+                                                data-discount="@FormatRaw(order.DiscountAmount)">
 
                                             <i class="fas fa-money-bill-wave text-success me-1"></i> Add Advance Payment
                                         </button>
@@ -184,7 +188,6 @@
                     z-index: 1050 !important;
                 }
 
-                /* Ensure the modal content itself isn't hidden */
                 .modal-dialog {
                     z-index: 1060 !important;
                 }
@@ -192,9 +195,7 @@
         </div>
     </div>
 
-</div> <!-- END WRAPPER -->
-
-
+</div>
 <div class="modal fade" id="advanceModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border-0 shadow">
@@ -207,6 +208,24 @@
                     <input type="hidden" id="adv_orderId" name="OrderId" />
                     <input type="hidden" id="adv_customerId" name="CustomerId" />
                     <input type="hidden" id="adv_orderRef" name="TransactionReference" />
+
+                    @* ✅ NEW ROW: Product Price & Discount *@
+                    <div class="row g-3 mb-3">
+                        <div class="col-6">
+                            <label class="form-label small text-muted">Product Price</label>
+                            <div class="input-group input-group-sm">
+                                <span class="input-group-text bg-light border-0">Tk</span>
+                                <input type="text" id="adv_productPrice" class="form-control fw-bold bg-light" readonly disabled />
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small text-muted">Discount</label>
+                            <div class="input-group input-group-sm">
+                                <span class="input-group-text bg-light border-0 text-danger">- Tk</span>
+                                <input type="text" id="adv_discount" class="form-control fw-bold text-danger bg-light" readonly disabled />
+                            </div>
+                        </div>
+                    </div>
 
                     <div class="row g-3 mb-3">
                         <div class="col-6">
@@ -274,8 +293,6 @@
                         <div class="input-group has-validation">
                             <span class="input-group-text bg-success text-white">Tk</span>
                             <input type="number" id="adv_paidAmount" name="Amount" class="form-control fw-bold fs-5" placeholder="0.00" required />
-
-                            @* ✅ NEW: Error Message Area *@
                             <div id="adv_amountError" class="invalid-feedback fw-bold">
                                 Amount cannot exceed the Current Due.
                             </div>
@@ -292,25 +309,21 @@
                         <textarea id="adv_note" name="Notes" class="form-control form-control-sm" rows="2" placeholder="e.g. Bkash Trx ID..."></textarea>
                     </div>
 
-                    @* ✅ NEW: Added ID 'adv_submitBtn' to control enable/disable *@
                     <button type="submit" id="adv_submitBtn" class="btn btn-success w-100 fw-medium">Save Advance Payment</button>
                 </form>
             </div>
         </div>
     </div>
 </div>
-<!-- DETAILS MODAL -->
+
 <div class="modal fade" id="detailsModal" tabindex="-1" aria-labelledby="detailsModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable order-details-modal">
         <div class="modal-content">
-            <!-- Header -->
             <div class="modal-header modal-header-soft">
                 <h5 class="modal-title" id="detailsModalLabel">Order <span id="m-id" class="text-primary"></span></h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-
             <div class="modal-body">
-                <!-- Status Section -->
                 <div class="info-section status-section">
                     <div class="section-header">
                         <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
@@ -323,8 +336,6 @@
                         <h4 id="m-status" class="mb-0"></h4>
                     </div>
                 </div>
-
-                <!-- General Information -->
                 <div class="info-section">
                     <div class="section-header">
                         <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
@@ -349,8 +360,6 @@
                         </div>
                     </div>
                 </div>
-
-                <!-- Financial Breakdown -->
                 <div class="info-section financial-section">
                     <div class="section-header">
                         <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
@@ -375,8 +384,6 @@
                         </div>
                     </div>
                 </div>
-
-                <!-- System & Audit Info -->
                 <div class="info-section">
                     <div class="section-header">
                         <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
@@ -405,8 +412,6 @@
                         </div>
                     </div>
                 </div>
-
-                <!-- Technical Data -->
                 <div class="info-section">
                     <div class="section-header">
                         <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
@@ -428,8 +433,6 @@
                     </div>
                 </div>
             </div>
-
-            <!-- Footer -->
             <div class="modal-footer modal-footer-soft">
                 <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
             </div>
@@ -440,54 +443,7 @@
 @section Scripts {
     <script src="~/js/order-details.js" asp-append-version="true"></script>
     <script src="~/js/order-actions.js" asp-append-version="true"></script>
-
-    <script>
-        // ✅ OVERRIDE Modal Function to use RAW data and SERVER calculated delivery
-        window.openAdvanceModal = function (element) {
-
-            // 1. READ RAW VALUES (No Commas!)
-            const orderRef = element.getAttribute('data-order-ref');
-            const custId = element.getAttribute('data-cust-id');
-            const net = parseFloat(element.getAttribute('data-net')) || 0;
-            const alreadyPaid = parseFloat(element.getAttribute('data-paid')) || 0;
-            const delivery = parseFloat(element.getAttribute('data-delivery')) || 0;
-
-            // 2. DEBUGGING (Check your browser console if issues persist)
-            console.log("Modal Data -> Net:", net, " Paid:", alreadyPaid, " Delivery:", delivery);
-
-            // 3. FILL INPUTS
-            document.getElementById('adv_orderRef').value = orderRef;
-            document.getElementById('adv_customerId').value = custId;
-
-            // Fix the inputs
-            document.getElementById('adv_netAmount').value = net; // Should now show 1250, not 1
-            document.getElementById('adv_alreadyPaid').value = alreadyPaid;
-            document.getElementById('adv_displayPaid').textContent = alreadyPaid.toLocaleString('en-BD', { minimumFractionDigits: 2 });
-            document.getElementById('adv_delivery').value = delivery;
-
-            // 4. RESET & SHOW
-            document.getElementById('adv_paidAmount').value = "";
-            document.getElementById('adv_note').value = "";
-            const submitBtn = document.getElementById('adv_submitBtn');
-            const paidInput = document.getElementById('adv_paidAmount');
-
-            if(paidInput) paidInput.classList.remove('is-invalid');
-            if(submitBtn) submitBtn.disabled = false;
-
-            // Trigger Recalculation so "Current Due" updates immediately
-            const event = new Event('input');
-            document.getElementById('adv_delivery').dispatchEvent(event);
-
-            const modalEl = document.getElementById('advanceModal');
-            if (modalEl.parentElement !== document.body) {
-                document.body.appendChild(modalEl);
-            }
-            const modal = new bootstrap.Modal(modalEl);
-            modal.show();
-        };
-    </script>
 }
-
 
 @functions {
     public string FormatDate(DateTime? date)
@@ -496,18 +452,15 @@
         return date.Value.ToString("MMM dd, yyyy");
     }
 
-    // ✅ For Display (Human Readable, e.g., "1,250.00")
     public string FormatAmount(decimal? amount)
     {
         if (!amount.HasValue || amount.Value == 0M) return "0.00";
         return amount.Value.ToString("N2");
     }
 
-    // ✅ NEW: For JavaScript Data Attributes (Raw, e.g., "1250.00")
     public string FormatRaw(decimal? amount)
     {
         if (!amount.HasValue) return "0";
-        return amount.Value.ToString("0.##"); // No commas!
+        return amount.Value.ToString("0.##");
     }
 }
-    

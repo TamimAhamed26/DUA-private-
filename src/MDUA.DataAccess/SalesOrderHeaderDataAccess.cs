@@ -76,12 +76,11 @@ namespace MDUA.DataAccess
                 AddParameter(cmd, pInt32("Id", orderId));
                 AddParameter(cmd, pDecimal("Total", newTotalAmount));
 
-                if (cmd.Connection.State != ConnectionState.Open) cmd.Connection.Open();
-                cmd.ExecuteNonQuery();
-                cmd.Connection.Close();
+                // ✅ FIX: Use the safe helper method 'ExecuteCommand' from BaseDataAccess.
+                // It automatically checks if a Transaction is active and keeps the connection open if needed.
+                ExecuteCommand(cmd);
             }
         }
-
         public decimal GetProductTotalFromDetails(int orderId)
         {
             // Sums (UnitPrice * Quantity) for all items in this order
@@ -221,6 +220,7 @@ namespace MDUA.DataAccess
 
         public SalesOrderHeaderList GetAllSalesOrderHeaders()
         {
+            // ✅ UPDATED QUERY: Joins Customer & Address to fetch full details efficiently
             const string SQLQuery = @"
     SELECT 
         soh.[Id], 
@@ -244,9 +244,21 @@ namespace MDUA.DataAccess
         soh.[UpdatedAt], 
         soh.[SalesOrderId],
         
-        -- ✅ CHANGE: Fetch 'City' (District) instead of/in addition to Division
-        ISNULL(a.[City], '') AS City, 
+        -- ✅ FETCH ADDRESS DETAILS
+        ISNULL(a.[Street], '') AS Street,
+        ISNULL(a.[City], '') AS City,
+        ISNULL(a.[Divison], '') AS Divison,
+        ISNULL(a.[Thana], '') AS Thana,
+        ISNULL(a.[SubOffice], '') AS SubOffice,
+        ISNULL(a.[PostalCode], '') AS PostalCode,
+        ISNULL(a.[Country], 'Bangladesh') AS Country,
 
+        -- ✅ FETCH CUSTOMER NAME
+        ISNULL(c.[CustomerName], 'Guest') AS CustomerName,
+        ISNULL(c.[Phone], '') AS CustomerPhone,
+        ISNULL(c.[Email], '') AS CustomerEmail,
+
+        -- Payment Stats
         ISNULL((
             SELECT SUM(cp.Amount) 
             FROM CustomerPayment cp 
@@ -261,6 +273,8 @@ namespace MDUA.DataAccess
 
     FROM [dbo].[SalesOrderHeader] soh
     LEFT JOIN [dbo].[Address] a ON soh.AddressId = a.Id
+    LEFT JOIN [dbo].[CompanyCustomer] cc ON soh.CompanyCustomerId = cc.Id
+    LEFT JOIN [dbo].[Customer] c ON cc.CustomerId = c.Id
     ORDER BY soh.[OrderDate] DESC";
 
             using (SqlCommand cmd = GetSQLCommand(SQLQuery))
@@ -276,7 +290,7 @@ namespace MDUA.DataAccess
                         SalesOrderHeader order = new SalesOrderHeader();
                         int i = 0;
 
-                        // ... [Keep existing mapping for first 19 columns] ...
+                        // 1. Base Fields (Indices 0-19)
                         order.Id = reader.GetInt32(i++);
                         order.CompanyCustomerId = reader.GetInt32(i++);
                         order.AddressId = reader.GetInt32(i++);
@@ -298,9 +312,21 @@ namespace MDUA.DataAccess
                         order.UpdatedAt = reader.IsDBNull(i) ? (DateTime?)null : reader.GetDateTime(i); i++;
                         order.SalesOrderId = reader.IsDBNull(i) ? null : reader.GetString(i); i++;
 
-                        // ✅ MAP CITY (District)
-                        order.City = reader.IsDBNull(i) ? "" : reader.GetString(i); i++;
+                        // 2. ✅ Address Mapping
+                        order.Street = reader.GetString(i++);
+                        order.City = reader.GetString(i++);
+                        order.Divison = reader.GetString(i++);
+                        order.Thana = reader.GetString(i++);
+                        order.SubOffice = reader.GetString(i++);
+                        order.PostalCode = reader.GetString(i++);
+                        order.Country = reader.GetString(i++);
 
+                        // 3. ✅ Customer Mapping
+                        order.CustomerName = reader.GetString(i++);
+                        order.CustomerPhone = reader.GetString(i++);
+                        order.CustomerEmail = reader.GetString(i++);
+
+                        // 4. Financials
                         order.PaidAmount = reader.GetDecimal(i++);
                         order.DueAmount = reader.GetDecimal(i++);
 
@@ -311,7 +337,7 @@ namespace MDUA.DataAccess
                 }
                 return list;
             }
-        }
+        }       
         //new
         public void UpdateStatusSafe(int orderId, string status, bool confirmed)
         {

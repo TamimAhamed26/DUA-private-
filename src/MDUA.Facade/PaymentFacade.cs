@@ -45,100 +45,78 @@ namespace MDUA.Facade
         }
 
         // 2. The Main Logic
-        public long AddPayment(CustomerPayment payment)
-
+        public long AddPayment(CustomerPayment payment, decimal? deliveryCharge = null)
         {
-
-            // A. Get the Connection String from Configuration
-
             string connString = _configuration.GetConnectionString("DefaultConnection");
-
-            // B. Pass the string to static BaseDataAccess method
-
             SqlTransaction transaction = BaseDataAccess.BeginTransaction(connString);
 
             try
-
             {
-
-                // C. Instantiate DAs with the transaction
-
                 var salesDa = new SalesOrderDetailDataAccess(transaction);
-
                 var invDa = new InventoryTransactionDataAccess(transaction);
-
                 var custPayDa = new CustomerPaymentDataAccess(transaction);
+
+                // ✅ NEW: Initialize Order Header DA for update
+                var orderDa = new SalesOrderHeaderDataAccess(transaction);
 
                 // --- Business Logic ---
 
+                // 1. Get Order Detail to link Inventory & find Order ID
                 var orderDetail = salesDa.GetFirstDetailByOrderRef(payment.TransactionReference);
-
                 int? invTrxId = null;
 
-                if (orderDetail != null && orderDetail.ProductVariantId > 0)
-
+                if (orderDetail != null)
                 {
-
-                    var invTrx = new InventoryTransaction
-
+                    // 2. ✅ Update Delivery Charge & Total Amount Logic
+                    if (deliveryCharge.HasValue)
                     {
+                        int orderId = orderDetail.SalesOrderId; // FK from detail
 
-                        SalesOrderDetailId = orderDetail.Id,
+                        // A. Calculate Product Cost (Sum of all lines)
+                        // Note: Using orderDA with the ACTIVE transaction
+                        decimal productTotal = orderDa.GetProductTotalFromDetails(orderId);
 
-                        InOut = "IN",
+                        // B. New Total = Product Cost + New Delivery
+                        decimal newTotalAmount = productTotal + deliveryCharge.Value;
 
-                        Date = DateTime.Now,
+                        // C. Update DB
+                        orderDa.UpdateTotalAmountSafe(orderId, newTotalAmount);
+                    }
 
-                        Price = payment.Amount,
-
-                        Quantity = orderDetail.Quantity,
-
-                        ProductVariantId = orderDetail.ProductVariantId,
-
-                        Remarks = "Payment: " + payment.Notes,
-
-                        CreatedBy = payment.CreatedBy,
-
-                        CreatedAt = DateTime.Now
-
-                    };
-
-                    long newId = invDa.Insert(invTrx);
-
-                    if (newId > 0) invTrxId = (int)newId;
-
+                    // 3. Inventory Transaction Logic (Existing)
+                    if (orderDetail.ProductVariantId > 0)
+                    {
+                        var invTrx = new InventoryTransaction
+                        {
+                            SalesOrderDetailId = orderDetail.Id,
+                            InOut = "IN",
+                            Date = DateTime.Now,
+                            Price = payment.Amount,
+                            Quantity = orderDetail.Quantity,
+                            ProductVariantId = orderDetail.ProductVariantId,
+                            Remarks = "Payment: " + payment.Notes,
+                            CreatedBy = payment.CreatedBy,
+                            CreatedAt = DateTime.Now
+                        };
+                        long newId = invDa.Insert(invTrx);
+                        if (newId > 0) invTrxId = (int)newId;
+                    }
                 }
 
                 payment.InventoryTransactionId = invTrxId;
 
-                // Insert Payment
-
+                // 4. Insert Payment
                 long paymentId = custPayDa.Insert(payment);
 
-                // --- End Business Logic ---
-
-                // D. Commit
-
                 BaseDataAccess.CloseTransaction(true, transaction);
-
                 return paymentId;
-
             }
-
             catch (Exception ex)
-
             {
-
-                // E. Rollback
-
                 BaseDataAccess.CloseTransaction(false, transaction);
-
                 throw;
-
             }
-
         }
-
 
         public long Insert(CustomerPaymentBase entity)
         {

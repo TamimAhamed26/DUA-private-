@@ -82,8 +82,7 @@
 
                             @if (item.GlobalSupportsManual)
                             {
-                                // Show initially ONLY if Manual is specifically enabled
-                                // For Hybrid: Depends on checkbox. For Single Mode: Depends on Main Toggle (IsEnabled).
+                               
                                 bool showInstruction = item.IsManualEnabled;
 
                                 <div class="col-md-12 manual-instruction-container" style="display: @(showInstruction ? "block" : "none")">

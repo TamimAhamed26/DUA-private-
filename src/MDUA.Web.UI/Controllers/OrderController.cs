@@ -585,21 +585,19 @@ namespace MDUA.Web.UI.Controllers
         }
         public class PaymentRequestModel : CustomerPayment
         {
-            // Extend the model to accept the extra field from JS
             public decimal DeliveryCharge { get; set; }
         }
 
         [HttpPost]
         [Route("/order/add-payment")]
-        public IActionResult AddAdvancePayment([FromBody] CustomerPayment model)
+        // ✅ CHANGE: Accept PaymentRequestModel instead of CustomerPayment
+        public IActionResult AddAdvancePayment([FromBody] PaymentRequestModel model)
         {
-            // 1. Basic Validation
             if (model.CustomerId <= 0 || model.Amount <= 0)
             {
                 return Json(new { success = false, message = "Invalid Amount or Customer" });
             }
 
-            // 2. Validate Payment Method (Dynamic Check)
             if (model.PaymentMethodId <= 0)
             {
                 return Json(new { success = false, message = "Please select a valid Payment Method." });
@@ -607,17 +605,13 @@ namespace MDUA.Web.UI.Controllers
 
             try
             {
-                // 3. Set Server-Side Defaults
-                model.PaymentDate = DateTime.Now; // ✅ FIX: Prevents "Cannot insert NULL" error
+                model.PaymentDate = DateTime.Now;
                 model.CreatedBy = User.Identity?.Name ?? "Admin";
                 model.CreatedAt = DateTime.Now;
                 model.Status = "Completed";
 
-                // 🛑 REMOVED: model.PaymentMethodId = 1; 
-                // We now trust the value coming from the frontend ([FromBody])
-
-                // 4. Call Facade
-                long newId = _paymentFacade.AddPayment(model);
+                // ✅ CHANGE: Pass the DeliveryCharge to the Facade
+                long newId = _paymentFacade.AddPayment(model, model.DeliveryCharge);
 
                 if (newId > 0)
                 {

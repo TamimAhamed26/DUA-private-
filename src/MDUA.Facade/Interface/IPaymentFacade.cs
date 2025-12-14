@@ -11,7 +11,7 @@ namespace MDUA.Facade.Interface
 {
     public interface IPaymentFacade : ICommonFacade<CustomerPayment, CustomerPaymentList, CustomerPaymentBase>
     {
-        long AddPayment(CustomerPayment payment);
+        long AddPayment(CustomerPayment payment, decimal? deliveryCharge = null);
         List<CompanyPaymentMethod> GetActivePaymentMethods(int companyId);
     }
 }
