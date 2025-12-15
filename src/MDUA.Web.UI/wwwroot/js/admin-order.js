@@ -146,11 +146,27 @@ document.addEventListener('DOMContentLoaded', function () {
         if (discType === "Flat") discount = discVal * qty;
         else if (discType === "Percentage") discount = subTotal * (discVal / 100);
 
+        // ✅ FIX: DYNAMIC DELIVERY CALCULATION
         let delivery = 0;
         if (!modeStore.checked) {
+            // Get values from the window object we created in the View
+            // Fallback to 0 if config is missing to avoid NaN
+            const config = window.deliveryConfig || { dhaka: 0, outside: 0 };
+
+            // Look for "dhaka" or "Cost_InsideDhaka" depending on how your DB saves keys
+            const costDhaka = parseFloat(config.dhaka || config.Cost_InsideDhaka || 0);
+            const costOutside = parseFloat(config.outside || config.Cost_OutsideDhaka || 0);
+
             const div = divisionSelect.value ? divisionSelect.value.toLowerCase() : "";
-            if (div.includes("dhaka")) delivery = 50;
-            else if (div !== "") delivery = 100;
+            const dist = districtSelect.value ? districtSelect.value.toLowerCase() : "";
+
+            // Logic: If Division OR District contains "dhaka"
+            if (div.includes("dhaka") || dist.includes("dhaka")) {
+                delivery = costDhaka;
+            }
+            else if (div !== "") {
+                delivery = costOutside;
+            }
         }
 
         const net = (subTotal - discount) + delivery;
@@ -161,7 +177,6 @@ document.addEventListener('DOMContentLoaded', function () {
         if (displayDelivery) displayDelivery.textContent = delivery.toFixed(2);
         displayNet.textContent = net.toFixed(2);
     }
-
     // ==========================================
     // 3. LOCATION LOGIC (Using OrderAPI)
     // ==========================================
@@ -486,3 +501,4 @@ document.addEventListener('DOMContentLoaded', function () {
     toggleMode();
 
 });
+

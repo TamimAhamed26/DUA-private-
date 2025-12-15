@@ -41,5 +41,9 @@ namespace MDUA.Entities
 
         [DataMember]
         public decimal DueAmount { get; set; }
+
+        [DataMember]
+        public decimal ActualLogisticsCost { get; set; } 
+
     }
 }

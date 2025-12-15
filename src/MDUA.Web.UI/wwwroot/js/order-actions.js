@@ -17,6 +17,21 @@ window.openAdvanceModal = function (element) {
         // Remove commas if present
         const clean = val.toString().replace(/,/g, '');
         return parseFloat(clean) || 0;
+
+        // Inside window.openAdvanceModal...
+
+        // Reset Dropdown
+        const typeSelect = document.getElementById('adv_paymentType');
+        if (typeSelect) typeSelect.value = "Advance";
+
+        // Immediately hide COD because we just set it to "Advance"
+        if (window.toggleCOD) window.toggleCOD();
+
+        // ✅ NEW: Initialize the correct placeholder
+        if (window.updateNotePlaceholder) window.updateNotePlaceholder();
+
+        // Clear Validation Styles...
+        
     };
 
     // Note: 'data-net' from DB includes the OLD delivery charge
@@ -65,8 +80,12 @@ window.openAdvanceModal = function (element) {
     document.getElementById('adv_note').value = "";
 
     // Reset Dropdown
+    // Reset Dropdown
     const typeSelect = document.getElementById('adv_paymentType');
     if (typeSelect) typeSelect.value = "Advance";
+
+    // ✅ NEW: Immediately hide COD because we just set it to "Advance"
+    if (window.toggleCOD) window.toggleCOD();
 
     // Clear Validation Styles
     const paidInput = document.getElementById('adv_paidAmount');
@@ -89,7 +108,64 @@ window.openAdvanceModal = function (element) {
     const modal = new bootstrap.Modal(modalEl);
     modal.show();
 };
+// =========================================================
+// NEW FUNCTION: Update Note Placeholder based on inputs
+// =========================================================
+window.updateNotePlaceholder = function () {
+    const typeSelect = document.getElementById('adv_paymentType');
+    const methodSelect = document.getElementById('adv_paymentMethod');
+    const noteInput = document.getElementById('adv_note');
 
+    if (!typeSelect || !methodSelect || !noteInput) return;
+
+    // Get current values
+    const paymentType = typeSelect.value; // "Advance" or "Sale"
+
+    // Get the text of the selected method (safe way to handle DB-driven values)
+    const selectedOption = methodSelect.options[methodSelect.selectedIndex];
+    const methodText = selectedOption ? selectedOption.text.trim().toLowerCase() : "";
+
+    // LOGIC:
+    // If Type is "Sale" AND Method is "Cash on Delivery" -> Show Courier/Receipt placeholder
+    // Otherwise (Advance, Bkash, Nagad, etc.) -> Show Transaction ID placeholder
+    if (paymentType === 'Sale' && methodText.includes('cash on delivery')) {
+        noteInput.placeholder = "Money Receipt No, Courier ID, or Optional Note...";
+    } else {
+        noteInput.placeholder = "Transaction ID / Sender Number (Required)";
+    }
+};
+// --- B. LISTENERS ---
+
+// 1. Payment Method Change (Add this new listener)
+const methodSelect = document.getElementById('adv_paymentMethod');
+if (methodSelect) {
+    methodSelect.addEventListener('change', function () {
+        if (window.updateNotePlaceholder) window.updateNotePlaceholder();
+    });
+}
+
+// 2. Payment Type Change (Update existing listener)
+const typeSelect = document.getElementById('adv_paymentType');
+if (typeSelect) {
+    typeSelect.addEventListener('change', function () {
+        // Existing Logic
+        if (window.toggleCOD) window.toggleCOD();
+
+        // ✅ NEW: Update placeholder when type switches between Sale/Advance
+        if (window.updateNotePlaceholder) window.updateNotePlaceholder();
+
+        // Existing Calculation Logic
+        const { currentDue } = window.calculateTotals();
+        const payInput = document.getElementById('adv_paidAmount');
+
+        if (this.value === 'Sale') {
+            payInput.value = currentDue > 0 ? currentDue : 0;
+        } else {
+            payInput.value = "";
+        }
+        window.calculateTotals();
+    });
+}
 // =========================================================
 // 2. DOM LOADED EVENTS
 // =========================================================
@@ -161,6 +237,47 @@ document.addEventListener('DOMContentLoaded', function () {
 
         return { currentDue, payingNow };
     };
+    // ... existing listeners ...
+
+    
+
+    // =========================================================
+// NEW FUNCTION: Toggle "Cash On Delivery" visibility
+// =========================================================
+    window.toggleCOD = function () {
+        const typeSelect = document.getElementById('adv_paymentType');
+        const methodSelect = document.getElementById('adv_paymentMethod');
+
+        if (!typeSelect || !methodSelect) return;
+
+        // Check if "Advance" is currently selected
+        const isAdvance = typeSelect.value === 'Advance';
+
+        // Loop through all Payment Method options
+        Array.from(methodSelect.options).forEach(option => {
+            // defined strictly by the text shown in the dropdown
+            const methodText = option.text.trim().toLowerCase();
+
+            if (methodText === "cash on delivery") {
+                if (isAdvance) {
+                    // HIDE IT
+                    option.style.display = "none"; // Hides from view
+                    option.disabled = true;        // Prevents selection via keyboard/script
+
+                    // If it was already selected, switch to the first available valid option
+                    if (methodSelect.value === option.value) {
+                        // Find the first option that isn't disabled
+                        const validOption = Array.from(methodSelect.options).find(o => !o.disabled);
+                        if (validOption) methodSelect.value = validOption.value;
+                    }
+                } else {
+                    // SHOW IT
+                    option.style.display = "";
+                    option.disabled = false;
+                }
+            }
+        });
+    };
 
     // --- B. LISTENERS ---
 
@@ -189,6 +306,9 @@ document.addEventListener('DOMContentLoaded', function () {
     // 3. Dropdown Change
     if (typeSelect) {
         typeSelect.addEventListener('change', function () {
+            // ✅ NEW: Run the toggle logic whenever this changes
+            if (window.toggleCOD) window.toggleCOD();
+
             const { currentDue } = window.calculateTotals();
             if (this.value === 'Sale') {
                 payInput.value = currentDue > 0 ? currentDue : 0;
@@ -233,7 +353,9 @@ document.addEventListener('DOMContentLoaded', function () {
             }).catch(err => alert("Network Error"));
         });
     }
-
+// =========================================================
+// NEW FUNCTION: Update Note Placeholder based on Method
+// =========================================================
     // --- D. TOGGLE CONFIRMATION (Existing Logic) ---
     const toggles = document.querySelectorAll('.confirm-toggle');
     toggles.forEach(toggle => {
@@ -267,3 +389,54 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 });
+// =========================================================
+// 3. CANCEL ORDER LOGIC in order actions js (bottom)
+// =========================================================
+window.cancelOrder = function (orderId, orderDisplayId) {
+    if (!confirm(`Are you sure you want to CANCEL Order #${orderDisplayId}? This action cannot be undone.`)) {
+        return;
+    }
+
+    const token = document.querySelector('input[name="__RequestVerificationToken"]').value;
+    const formData = new URLSearchParams();
+    formData.append('id', orderId);
+    formData.append('status', 'Cancelled');
+
+    fetch('/SalesOrder/UpdateStatus', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'RequestVerificationToken': token
+        },
+        body: formData.toString()
+    })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                // 1. Update Badge to Red immediately
+                const badge = document.getElementById(`status-badge-${orderId}`);
+                if (badge) {
+                    badge.textContent = "Cancelled";
+                    badge.className = "badge bg-danger text-white";
+                }
+
+                // 2. Hide the Cancel Button immediately
+                const cancelBtn = document.getElementById(`btn-cancel-${orderId}`);
+                if (cancelBtn) {
+                    cancelBtn.style.display = 'none'; // Or cancelBtn.remove();
+                }
+
+                // 3. Disable the Toggle Switch (optional but good UX)
+                const toggle = document.getElementById(`toggle-${orderId}`);
+                if (toggle) {
+                    toggle.disabled = true;
+                    toggle.checked = false;
+                }
+
+                alert("Order Cancelled Successfully.");
+            } else {
+                alert("Error: " + data.message);
+            }
+        })
+        .catch(err => alert("Network Error: Could not cancel order."));
+};

@@ -1,35 +1,37 @@
 ﻿USE AA4
 GO
 
-/****** Object:  StoredProcedure [dbo]..InsertProductImage    Script Date: 12/10/2025 2:32:52 PM ******/
-IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[InsertProductImage]') AND type in (N'P', N'PC'))
-DROP PROCEDURE [dbo].[InsertProductImage]
+/****** Object:  StoredProcedure [dbo]..InsertProductVideo    Script Date: 12/10/2025 2:32:53 PM ******/
+IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[InsertProductVideo]') AND type in (N'P', N'PC'))
+DROP PROCEDURE [dbo].[InsertProductVideo]
 GO
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
-CREATE PROCEDURE InsertProductImage
+CREATE PROCEDURE InsertProductVideo
 (
 	@Id int OUTPUT,
 	@ProductId int,
-	@ImageUrl nvarchar(300),
+	@VideoUrl nvarchar(500),
+	@ThumbnailUrl nvarchar(300),
 	@IsPrimary bit,
 	@SortOrder int,
-	@AltText nvarchar(100),
+	@Title nvarchar(200),
 	@CreatedBy nvarchar(100),
 	@CreatedAt datetime,
 	@UpdatedBy nvarchar(100),
 	@UpdatedAt datetime
 )
 AS
-    INSERT INTO [dbo].[ProductImage] 
+    INSERT INTO [dbo].[ProductVideo] 
 	(
 	[ProductId],
-	[ImageUrl],
+	[VideoUrl],
+	[ThumbnailUrl],
 	[IsPrimary],
 	[SortOrder],
-	[AltText],
+	[Title],
 	[CreatedBy],
 	[CreatedAt],
 	[UpdatedBy],
@@ -38,10 +40,11 @@ AS
 	VALUES 
 	(
 	@ProductId,
-	@ImageUrl,
+	@VideoUrl,
+	@ThumbnailUrl,
 	@IsPrimary,
 	@SortOrder,
-	@AltText,
+	@Title,
 	@CreatedBy,
 	@CreatedAt,
 	@UpdatedBy,
@@ -74,35 +77,37 @@ AS
 	RETURN @Id
 GO
 
-/****** Object:  StoredProcedure [dbo].UpdateProductImage    Script Date: 12/10/2025 2:32:52 PM ******/
-IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[UpdateProductImage]') AND type in (N'P', N'PC'))
-DROP PROCEDURE [dbo].[UpdateProductImage]
+/****** Object:  StoredProcedure [dbo].UpdateProductVideo    Script Date: 12/10/2025 2:32:53 PM ******/
+IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[UpdateProductVideo]') AND type in (N'P', N'PC'))
+DROP PROCEDURE [dbo].[UpdateProductVideo]
 GO
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
-CREATE PROCEDURE UpdateProductImage
+CREATE PROCEDURE UpdateProductVideo
 (
 	@Id int,
 	@ProductId int,
-	@ImageUrl nvarchar(300),
+	@VideoUrl nvarchar(500),
+	@ThumbnailUrl nvarchar(300),
 	@IsPrimary bit,
 	@SortOrder int,
-	@AltText nvarchar(100),
+	@Title nvarchar(200),
 	@CreatedBy nvarchar(100),
 	@CreatedAt datetime,
 	@UpdatedBy nvarchar(100),
 	@UpdatedAt datetime
 )
 AS
-    UPDATE [dbo].[ProductImage] 
+    UPDATE [dbo].[ProductVideo] 
 	SET
 	[ProductId] = @ProductId,
-	[ImageUrl] = @ImageUrl,
+	[VideoUrl] = @VideoUrl,
+	[ThumbnailUrl] = @ThumbnailUrl,
 	[IsPrimary] = @IsPrimary,
 	[SortOrder] = @SortOrder,
-	[AltText] = @AltText,
+	[Title] = @Title,
 	[CreatedBy] = @CreatedBy,
 	[CreatedAt] = @CreatedAt,
 	[UpdatedBy] = @UpdatedBy,
@@ -122,20 +127,20 @@ AS
 	RETURN @Result
 GO
 
-/****** Object:  StoredProcedure [dbo].DeleteProductImage    Script Date: 12/10/2025 2:32:52 PM ******/
-IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[DeleteProductImage]') AND type in (N'P', N'PC'))
-DROP PROCEDURE [dbo].[DeleteProductImage]
+/****** Object:  StoredProcedure [dbo].DeleteProductVideo    Script Date: 12/10/2025 2:32:53 PM ******/
+IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[DeleteProductVideo]') AND type in (N'P', N'PC'))
+DROP PROCEDURE [dbo].[DeleteProductVideo]
 GO
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
-CREATE PROCEDURE DeleteProductImage
+CREATE PROCEDURE DeleteProductVideo
 (
 	@Id int
 )
 AS
-	DELETE [dbo].[ProductImage] 
+	DELETE [dbo].[ProductVideo] 
 
     WHERE ( Id = @Id )
 
@@ -153,81 +158,81 @@ AS
 	RETURN @Result
 GO
 
-/****** Object:  StoredProcedure [dbo].GetAllProductImage    Script Date: 12/10/2025 2:32:52 PM  ******/
-IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[GetAllProductImage]') AND type in (N'P', N'PC'))
-DROP PROCEDURE [dbo].[GetAllProductImage]
+/****** Object:  StoredProcedure [dbo].GetAllProductVideo    Script Date: 12/10/2025 2:32:53 PM  ******/
+IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[GetAllProductVideo]') AND type in (N'P', N'PC'))
+DROP PROCEDURE [dbo].[GetAllProductVideo]
 GO
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
-CREATE PROCEDURE GetAllProductImage
+CREATE PROCEDURE GetAllProductVideo
 AS
 	SELECT *		
 	FROM
-		[dbo].[ProductImage]
+		[dbo].[ProductVideo]
 
 RETURN @@ROWCOUNT
 GO
 
-/****** Object:  StoredProcedure [dbo].GetProductImageById    Script Date: 12/10/2025 2:32:52 PM  ******/
-IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[GetProductImageById]') AND type in (N'P', N'PC'))
-DROP PROCEDURE [dbo].[GetProductImageById]
+/****** Object:  StoredProcedure [dbo].GetProductVideoById    Script Date: 12/10/2025 2:32:53 PM  ******/
+IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[GetProductVideoById]') AND type in (N'P', N'PC'))
+DROP PROCEDURE [dbo].[GetProductVideoById]
 GO
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
-CREATE PROCEDURE GetProductImageById
+CREATE PROCEDURE GetProductVideoById
 (
 	@Id int
 )
 AS
 	SELECT *		
 	FROM
-		[dbo].[ProductImage]
+		[dbo].[ProductVideo]
 	WHERE ( Id = @Id )
 
 RETURN @@ROWCOUNT
 GO
 
-/****** Object:  StoredProcedure [dbo].GetAllProductImageByProductId    Script Date: 12/10/2025 2:32:52 PM  ******/
-IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[GetProductImageByProductId]') AND type in (N'P', N'PC'))
-DROP PROCEDURE [dbo].[GetProductImageByProductId]
+/****** Object:  StoredProcedure [dbo].GetAllProductVideoByProductId    Script Date: 12/10/2025 2:32:53 PM  ******/
+IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[GetProductVideoByProductId]') AND type in (N'P', N'PC'))
+DROP PROCEDURE [dbo].[GetProductVideoByProductId]
 GO
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
-CREATE PROCEDURE GetProductImageByProductId
+CREATE PROCEDURE GetProductVideoByProductId
 (
 	@ProductId int
 )
 AS
 	SELECT *		
 	FROM
-		[dbo].[ProductImage]
+		[dbo].[ProductVideo]
 	WHERE ( ProductId = @ProductId  )
 
 RETURN @@ROWCOUNT
 GO
 
-/****** Object:  StoredProcedure [dbo].GetProductImageMaximumId    Script Date: 12/10/2025 2:32:52 PM  ******/
-IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[GetProductImageMaximumId]') AND type in (N'P', N'PC'))
-DROP PROCEDURE [dbo].[GetProductImageMaximumId]
+/****** Object:  StoredProcedure [dbo].GetProductVideoMaximumId    Script Date: 12/10/2025 2:32:53 PM  ******/
+IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[GetProductVideoMaximumId]') AND type in (N'P', N'PC'))
+DROP PROCEDURE [dbo].[GetProductVideoMaximumId]
 GO
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
-CREATE PROCEDURE GetProductImageMaximumId
+CREATE PROCEDURE GetProductVideoMaximumId
 AS
 	DECLARE @Result int
 	SET @Result = 0
 	
 	SELECT @Result = MAX(Id) 		
 	FROM
-		[dbo].[ProductImage]
+		[dbo].[ProductVideo]
 
 	If @Result > 0 
 		BEGIN
@@ -241,34 +246,34 @@ AS
 RETURN @Result
 GO
 
-/****** Object:  StoredProcedure [dbo].GetProductImageRowCount    Script Date: 12/10/2025 2:32:52 PM  ******/
-IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[GetProductImageRowCount]') AND type in (N'P', N'PC'))
-DROP PROCEDURE [dbo].[GetProductImageRowCount]
+/****** Object:  StoredProcedure [dbo].GetProductVideoRowCount    Script Date: 12/10/2025 2:32:53 PM  ******/
+IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[GetProductVideoRowCount]') AND type in (N'P', N'PC'))
+DROP PROCEDURE [dbo].[GetProductVideoRowCount]
 GO
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
-CREATE PROCEDURE GetProductImageRowCount
+CREATE PROCEDURE GetProductVideoRowCount
 AS
 	DECLARE @Result int
 	SET @Result = 0
 	SELECT @Result = COUNT(*) 		
 	FROM
-		[dbo].[ProductImage]
+		[dbo].[ProductVideo]
 		
 RETURN @Result
 GO
 
-/****** Object:  StoredProcedure [dbo].GetPagedProductImage    Script Date: 12/10/2025 2:32:52 PM  ******/
-IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[GetPagedProductImage]') AND type in (N'P', N'PC'))
-DROP PROCEDURE [dbo].[GetPagedProductImage]
+/****** Object:  StoredProcedure [dbo].GetPagedProductVideo    Script Date: 12/10/2025 2:32:53 PM  ******/
+IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[GetPagedProductVideo]') AND type in (N'P', N'PC'))
+DROP PROCEDURE [dbo].[GetPagedProductVideo]
 GO
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
-CREATE PROCEDURE GetPagedProductImage
+CREATE PROCEDURE GetPagedProductVideo
 (
 	@TotalRows		int	OUTPUT,
 	@PageIndex	int,
@@ -309,42 +314,44 @@ BEGIN
 	SET @SortColumn = @SortColumn + ' ORDER BY [Id] ASC'
 END
 
-SET @SQL1 = 'WITH ProductImageEntries AS (
+SET @SQL1 = 'WITH ProductVideoEntries AS (
 			SELECT ROW_NUMBER() OVER ('+ @SortColumn +')AS Row,
 	[Id],
 	[ProductId],
-	[ImageUrl],
+	[VideoUrl],
+	[ThumbnailUrl],
 	[IsPrimary],
 	[SortOrder],
-	[AltText],
+	[Title],
 	[CreatedBy],
 	[CreatedAt],
 	[UpdatedBy],
 	[UpdatedAt]
 				FROM 
-				[dbo].[ProductImage]
+				[dbo].[ProductVideo]
 					'+ @WhereClause +'
 				)
 				SELECT 
 	[Id],
 	[ProductId],
-	[ImageUrl],
+	[VideoUrl],
+	[ThumbnailUrl],
 	[IsPrimary],
 	[SortOrder],
-	[AltText],
+	[Title],
 	[CreatedBy],
 	[CreatedAt],
 	[UpdatedBy],
 	[UpdatedAt]
 				FROM 
-					ProductImageEntries
+					ProductVideoEntries
 				WHERE 
 					Row between '+ CONVERT(nvarchar(10), (@PageIndex * @RowPerPage) + 1) +'And ('+ CONVERT(nvarchar(10), (@PageIndex * @RowPerPage) +@RowPerPage+ 1) +')'
 	
 
 SET @SQL2 =		' SELECT @TotalRows = COUNT(*) 
 				FROM 
-				[dbo].[ProductImage] ' + @WhereClause
+				[dbo].[ProductVideo] ' + @WhereClause
 								
 EXEC sp_executesql @SQL2, N'@TotalRows int output', @TotalRows = @TotalRows output
 
@@ -354,15 +361,15 @@ RETURN @@ROWCOUNT
 END
 GO
 
-/****** Object:  StoredProcedure [dbo].GetProductImageByQuery    Script Date: 12/10/2025 2:32:52 PM  ******/
-IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[GetProductImageByQuery]') AND type in (N'P', N'PC'))
-DROP PROCEDURE [dbo].[GetProductImageByQuery]
+/****** Object:  StoredProcedure [dbo].GetProductVideoByQuery    Script Date: 12/10/2025 2:32:53 PM  ******/
+IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[GetProductVideoByQuery]') AND type in (N'P', N'PC'))
+DROP PROCEDURE [dbo].[GetProductVideoByQuery]
 GO
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
-CREATE PROCEDURE GetProductImageByQuery
+CREATE PROCEDURE GetProductVideoByQuery
 (
 	@Query	nvarchar(4000)
 )
@@ -379,7 +386,7 @@ END
 
 SET @SQL1 =		'SELECT * 
 				FROM 
-				[dbo].[ProductImage] ' + @Query
+				[dbo].[ProductVideo] ' + @Query
 								
 EXEC sp_executesql @SQL1
 

@@ -479,8 +479,9 @@ namespace MDUA.Web.UI.Controllers
                 return Json(new { success = false, message = ex.Message });
             }
         }
-        [Route("order/add")]
+        // In MDUA.Web.UI/Controllers/OrderController.cs
 
+        [Route("order/add")]
         [HttpGet]
         public IActionResult Add()
         {
@@ -488,9 +489,26 @@ namespace MDUA.Web.UI.Controllers
 
             try
             {
-                // Fetch products for the dropdown
+                // 1. Fetch Products
                 var products = _orderFacade.GetProductVariantsForAdmin();
                 ViewBag.ProductVariants = products;
+
+                // 2. ✅ ADD THIS: Fetch Delivery Settings for the View
+                int companyId = 1; // Default or fetch from User Claims
+                var claim = User.FindFirst("CompanyId") ?? User.FindFirst("TargetCompanyId");
+                if (claim != null && int.TryParse(claim.Value, out int parsedId))
+                {
+                    companyId = parsedId;
+                }
+
+                // Fetch settings (e.g., dhaka=60, outside=120)
+                var settings = _settingsFacade.GetDeliverySettings(companyId) ?? new Dictionary<string, int>();
+
+                // Ensure defaults if keys are missing
+                if (!settings.ContainsKey("dhaka")) settings["dhaka"] = 0;
+                if (!settings.ContainsKey("outside")) settings["outside"] = 0;
+
+                ViewBag.DeliverySettings = settings; // <--- This was missing
 
                 return View();
             }
@@ -500,6 +518,57 @@ namespace MDUA.Web.UI.Controllers
                 return View();
             }
         }
+
+        [HttpPost]
+
+        [Route("SalesOrder/UpdateStatus")]
+
+        public IActionResult UpdateStatus(int id, string status)
+
+        {
+
+            try
+
+            {
+
+                // 1. Validate Status
+
+                var allowedStatuses = new[] { "Draft", "Confirmed", "Shipped", "Delivered", "Cancelled", "Returned" };
+
+                if (!allowedStatuses.Contains(status))
+
+                {
+
+                    return Json(new { success = false, message = "Invalid Status" });
+
+                }
+
+                // 2. Call Facade to update DB
+
+                // We reuse the update logic. You might need to add a method to your Facade 
+
+                // if UpdateOrderConfirmation is too specific.
+
+                // Let's assume we add a generic UpdateStatus method to Facade
+
+                _orderFacade.UpdateOrderStatus(id, status);
+
+                return Json(new { success = true });
+
+            }
+
+            catch (Exception ex)
+
+            {
+
+                return Json(new { success = false, message = ex.Message });
+
+            }
+
+        }
+
+
+
 
         [Route("order/place-direct")]
         [HttpPost]

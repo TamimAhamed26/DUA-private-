@@ -53,7 +53,17 @@
                             string orderType = order.SalesChannelId == 1 ? "Online" : "Direct";
 
                             string displayStatus = order.Status == "Draft" ? "Pending" : order.Status;
-                            string statusBadgeClass = displayStatus == "Confirmed" ? "bg-success text-white" : "bg-warning text-dark";
+                            bool isToggleDisabled = order.Status == "Cancelled" ||
+                            order.Status == "Delivered" ||
+                            order.Status == "Returned";
+
+                            // ✅ REFINED LOGIC: Explicitly handle Cancelled
+                            string statusBadgeClass = "bg-secondary-subtle text-dark"; // Default
+
+                            if (order.Status == "Confirmed") statusBadgeClass = "bg-success text-white";
+                            else if (order.Status == "Pending" || order.Status == "Draft") statusBadgeClass = "bg-warning text-dark";
+                            else if (order.Status == "Cancelled") statusBadgeClass = "bg-danger text-white"; // Force Red
+                            else if (order.Status == "Delivered") statusBadgeClass = "bg-primary text-white";
 
                             <tr class="accordion-toggle" style="cursor: pointer;"
                                 onclick="document.getElementById('btn-@order.Id').click()">
@@ -94,11 +104,16 @@
                                     }
                                 </td>
 
-                                <td><span class="badge @statusBadgeClass">@displayStatus</span></td>
-                                <td onclick="event.stopPropagation();">
+                                <td>
+                                    @* Added id="status-badge-@order.Id" so JS can find it *@
+                                    <span id="status-badge-@order.Id" class="badge @statusBadgeClass">@displayStatus</span>
+                                </td>                                <td onclick="event.stopPropagation();">
                                     <div class="form-check form-switch">
                                         <input class="form-check-input confirm-toggle" type="checkbox"
-                                               id="toggle-@order.Id" data-id="@order.Id" @(order.Confirmed ? "checked" : "")>
+                                               id="toggle-@order.Id"
+                                               data-id="@order.Id"
+                                               @(order.Confirmed ? "checked" : "")
+                                               @(isToggleDisabled ? "disabled" : "")>  @* ✅ NEW: Apply disabled attribute *@
                                     </div>
                                 </td>
                             </tr>
@@ -159,6 +174,15 @@
 
                                             <i class="fas fa-money-bill-wave text-success me-1"></i> Add Advance Payment
                                         </button>
+                                        @if (order.Status != "Cancelled" && order.Status != "Delivered" && order.Status != "Returned" && order.Status != "Confirmed")
+                                        {
+                                            <button type="button" class="btn btn-sm btn-white border shadow-sm text-danger"
+                                                    id="btn-cancel-@order.Id" @* ✅ NEW ID *@
+                                                    onclick="cancelOrder(@order.Id, '@orderIdDisplay')"
+                                                    title="Cancel this order">
+                                                <i class="fas fa-times-circle me-1"></i> Cancel
+                                            </button>
+                                        }
                                     </div>
                                 </td>
                             </tr>

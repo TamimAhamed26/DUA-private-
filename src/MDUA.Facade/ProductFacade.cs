@@ -251,8 +251,8 @@ namespace MDUA.Facade
             product.CompanyId = companyId;
             product.CreatedBy = username;
             product.UpdatedBy = username;
-            product.CreatedAt = DateTime.Now;
-            product.UpdatedAt = DateTime.Now;
+            product.CreatedAt = DateTime.UtcNow;// [cite_start]// [cite: 135]
+            product.UpdatedAt = DateTime.UtcNow; //[cite_start]// [cite: 135]
             product.ReorderLevel = product.ReorderLevel < 0 ? 0 : product.ReorderLevel;
 
             // 2️⃣ INSERT PRODUCT
@@ -280,8 +280,7 @@ namespace MDUA.Facade
             {
                 variant.ProductId = (int)productId;
                 variant.CreatedBy = username;
-                variant.CreatedAt = DateTime.Now;
-
+                variant.CreatedAt = DateTime.UtcNow; //[cite_start]// [cite: 142]
                 // Insert ProductVariant row
                 int variantId = _ProductVariantDataAccess.Insert(variant);
                 if (variantId > 0)
@@ -438,8 +437,8 @@ namespace MDUA.Facade
         public long UpdateProduct(Product product, string username)
         {
             product.UpdatedBy = username;
-            product.UpdatedAt = DateTime.Now;
-            return _ProductDataAccess.Update(product);
+            product.UpdatedAt = DateTime.UtcNow;// [cite_start]// [cite: 179]
+                     return _ProductDataAccess.Update(product);
         }
         public long UpdateVariantPrice(int variantId, decimal newPrice, string newSku)
         {

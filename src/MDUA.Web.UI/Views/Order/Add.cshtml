@@ -158,8 +158,12 @@
 </div> <!-- END WRAPPER -->
 @section Scripts {
     <script>
+        // Serializes the product list
         window.rawVariants = @Html.Raw(Json.Serialize(variants ?? new List<dynamic>()));
-    </script>
+
+        // ✅ FIX: Serialize the delivery settings from Controller
+        window.deliveryConfig = @Html.Raw(Json.Serialize(ViewBag.DeliverySettings));
+        </script>
 
     <script src="~/js/combo.js"></script>
     <script src="~/js/admin-order.js"></script>
