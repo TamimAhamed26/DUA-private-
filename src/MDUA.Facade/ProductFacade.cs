@@ -8,7 +8,9 @@ using MDUA.Framework;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using static MDUA.Entities.ProductVariant;
+using System.Net; 
 
 namespace MDUA.Facade
 {
@@ -380,13 +382,11 @@ namespace MDUA.Facade
 
         public ProductVariantList GetVariantsByProductId(int productId)
         {
-            // You already have this method in ProductVariantDataAccess
             return _ProductVariantDataAccess.GetProductVariantsByProductId(productId);
         }
 
         public bool? ToggleProductStatus(int productId)
         {
-            // Simply pass the call down to the DA layer
             return _ProductDataAccess.ToggleStatus(productId);
         }
 
@@ -772,7 +772,6 @@ namespace MDUA.Facade
         }
         #endregion
 
-        // ... inside ProductFacade class ...
 
         // =========================================================
         // VIDEO MANAGEMENT REGION
@@ -784,49 +783,49 @@ namespace MDUA.Facade
                                           .OrderBy(v => v.SortOrder)
                                           .ToList();
         }
-
+        // 1. Update the AddProductVideo method
         public long AddProductVideo(ProductVideo video, string username)
         {
-            // 1. Convert URL
-            video.VideoUrl = ConvertToEmbedUrl(video.VideoUrl);
+            // A. Validate generic requirements
+            if (video == null) throw new ArgumentNullException(nameof(video));
+            if (string.IsNullOrWhiteSpace(video.VideoUrl)) throw new ArgumentException("Video URL is required.");
 
-            // 2. Audit Fields
+            // B. SERVER-SIDE VALIDATION & CONVERSION
+            // This ensures only valid YouTube, Vimeo, or Facebook links are saved.
+            string embedUrl = ConvertToEmbedUrl(video.VideoUrl);
+
+            // If the conversion returned null/empty, it means the URL was invalid.
+            if (string.IsNullOrEmpty(embedUrl))
+            {
+                throw new ArgumentException("Invalid Video URL. Only YouTube, Vimeo, and Facebook are supported.");
+            }
+
+            // C. Set the validated/converted URL
+            video.VideoUrl = embedUrl;
+
+            // D. Audit Fields
             video.CreatedBy = username;
             video.CreatedAt = DateTime.UtcNow;
-
-            // ✅ FIX: Set UpdatedAt to prevent "SqlDateTime overflow" error (0001-01-01)
-            // Your Stored Procedure inserts this column, so it must be valid.
             video.UpdatedBy = username;
             video.UpdatedAt = DateTime.UtcNow;
 
-            // ✅ FIX: Ensure ThumbnailUrl isn't null if DB expects a string
             if (string.IsNullOrEmpty(video.ThumbnailUrl)) video.ThumbnailUrl = "";
 
-            // 3. Fetch Existing Videos to check state
+            // E. Sort Order Logic
             var existingVideos = _productVideoDataAccess.GetByProductId(video.ProductId);
-
-            // 4. Logic: Auto-Calculate SortOrder (Max + 1)
             if (existingVideos != null && existingVideos.Count > 0)
             {
                 video.SortOrder = existingVideos.Max(v => v.SortOrder) + 1;
             }
             else
             {
-                video.SortOrder = 1; // First video starts at 1
+                video.SortOrder = 1;
+                video.IsPrimary = true; // First video is always primary
             }
 
-            // 5. Logic: Handle "IsPrimary"
-            bool isFirstVideo = (existingVideos == null || existingVideos.Count == 0);
-
-            if (isFirstVideo)
+            // F. Primary Logic
+            if (video.IsPrimary && existingVideos != null && existingVideos.Count > 0)
             {
-                // Force Primary if it's the first video ever
-                video.IsPrimary = true;
-            }
-            else if (video.IsPrimary)
-            {
-                // If user manually checked "Set as Primary" for a NEW video,
-                // we must UNSET the existing primary video first.
                 var currentPrimary = existingVideos.FirstOrDefault(v => v.IsPrimary);
                 if (currentPrimary != null)
                 {
@@ -840,55 +839,72 @@ namespace MDUA.Facade
             return _productVideoDataAccess.Insert(video);
         }
 
-        // ... inside the class ...
-
-        public List<LowStockItem> GetLowStockVariants(int topN)
-        {
-            // _variantPriceStockDataAccess is already injected in your constructor
-            return _variantPriceStockDataAccess.GetLowStockVariants(topN);
-        }
-
-        // ...
+        // 2. Update the Helper Method
         public string ConvertToEmbedUrl(string url)
         {
-            if (string.IsNullOrEmpty(url)) return "";
+            if (string.IsNullOrEmpty(url)) return null;
 
-            // 1. If already correct, return it
-            if (url.Contains("/embed/")) return url;
+            // 1. Resolve Redirects (Share links) - CRITICAL for loading content
+            if (url.Contains("facebook.com/share/") || url.Contains("fb.watch"))
+            {
+                string resolvedUrl = ResolveRedirect(url);
+                if (!string.IsNullOrEmpty(resolvedUrl)) url = resolvedUrl;
+            }
 
-            string videoId = "";
+            // 2. Already Embedded Check
+            // If we don't do this, a valid Facebook plugin link gets encoded again and breaks.
+            if (url.Contains("facebook.com/plugins/video.php") ||
+                url.Contains("player.vimeo.com/video/") ||
+                url.Contains("youtube.com/embed/"))
+            {
+                return url;
+            }
 
+            // 3. YouTube (Handles Standard, Shorts, Embed, Youtu.be)
+            var ytMatch = System.Text.RegularExpressions.Regex.Match(url, @"(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|shorts)\/|.*[?&]v=)|youtu\.be\/)([^""&?\/\s]{11})", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (ytMatch.Success)
+            {
+                return $"https://www.youtube.com/embed/{ytMatch.Groups[1].Value}";
+            }
+
+            // 4. Vimeo (Handles vimeo.com/ID and player.vimeo.com/video/ID)
+            var vimeoMatch = System.Text.RegularExpressions.Regex.Match(url, @"(?:vimeo\.com\/|player\.vimeo\.com\/video\/)(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (vimeoMatch.Success)
+            {
+                return $"https://player.vimeo.com/video/{vimeoMatch.Groups[1].Value}";
+            }
+
+            // 5. Facebook
+            if (url.Contains("facebook.com"))
+            {
+                var encodedUrl = System.Net.WebUtility.UrlEncode(url);
+                return $"https://www.facebook.com/plugins/video.php?href={encodedUrl}&show_text=false&width=560";
+            }
+
+            return null;
+        }
+        private string ResolveRedirect(string url)
+        {
             try
             {
-                // Case A: Short Link (youtu.be/ID?si=...)
-                if (url.Contains("youtu.be/"))
+                // Simple HEAD request to follow redirects
+                var request = (HttpWebRequest)WebRequest.Create(url);
+                request.Method = "HEAD";
+                request.AllowAutoRedirect = true;
+                request.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)";
+
+                using (var response = (HttpWebResponse)request.GetResponse())
                 {
-                    var parts = url.Split(new[] { "youtu.be/" }, StringSplitOptions.None);
-                    if (parts.Length > 1)
-                    {
-                        // Grab everything after slash, then split by '?' or '&' to remove params
-                        videoId = parts[1].Split('?')[0].Split('&')[0];
-                    }
-                }
-                // Case B: Standard Link (youtube.com/watch?v=ID)
-                else if (url.Contains("v="))
-                {
-                    var parts = url.Split(new[] { "v=" }, StringSplitOptions.None);
-                    if (parts.Length > 1)
-                    {
-                        videoId = parts[1].Split('&')[0].Split('?')[0];
-                    }
+                    return response.ResponseUri.AbsoluteUri;
                 }
             }
-            catch { return url; }
-
-            if (!string.IsNullOrEmpty(videoId))
+            catch
             {
-                return $"https://www.youtube.com/embed/{videoId}";
+                // If resolution fails (e.g. timeout), return original url and hope for the best
+                return url;
             }
-
-            return url;
         }
+
         public long DeleteProductVideo(int videoId)
         {
             // 1. Fetch the video first to check its status
@@ -949,5 +965,13 @@ namespace MDUA.Facade
                 }
             }
         }
+        public List<LowStockItem> GetLowStockVariants(int topN)
+        {
+            // _variantPriceStockDataAccess is already injected in your constructor
+            return _variantPriceStockDataAccess.GetLowStockVariants(topN);
+        }
+
+        // ...
+      
     }
 }

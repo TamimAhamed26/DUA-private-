@@ -89,6 +89,7 @@
                      onerror="this.closest('.product-image').style.display='none'" />
             </section>
         }
+       
         @if (galleryImages != null && galleryImages.Count > 0)
         {
             <section class="product-gallery card">
@@ -119,18 +120,19 @@
         {
             <section class="video-section card" style="text-align: center; padding: 20px; max-width: 800px; margin: 20px auto;">
                 <h2 style="margin-bottom: 15px;">Product Video</h2>
-                <div class="video-container" style="display: flex; justify-content: center; align-items: center; width: 100%;">
+
+                <div class="video-container" style="position: relative; width: 100%; padding-top: 56.25%; background: #000; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
                     <iframe src="@GetEmbedUrl(productVideoUrl)"
                             title="Product Video"
                             frameborder="0"
                             allowfullscreen
-                            style="width: 100%; height: 350px; border-radius: 8px;">
+                            style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;">
                     </iframe>
                 </div>
+              
             </section>
         }
 
-        @* Check if Specifications exists and has items. If not, the whole section is skipped. *@
         @if (Model.Specifications != null && Model.Specifications.Count > 0)
         {
             <section class="description card">
@@ -587,20 +589,34 @@
     {
         if (string.IsNullOrEmpty(url)) return "";
 
-        // 1. If already embedded, return as is
-        if (url.Contains("/embed/")) return url;
-
-        // 2. Regex to extract the Video ID from any YouTube format (Short, Long, Mobile)
-        // This specifically handles the "?si=" parameter by ignoring it
-        var regex = new Regex(@"(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^""&?\/\s]{11})", RegexOptions.IgnoreCase);
-
-        var match = regex.Match(url);
-        if (match.Success)
+        // 1. Pass-through for valid embeds
+        if (url.Contains("/embed/") || url.Contains("player.vimeo.com") || url.Contains("facebook.com/plugins"))
         {
-            string videoId = match.Groups[1].Value;
-            return $"https://www.youtube.com/embed/{videoId}";
+            return url;
         }
 
-        return url; // Fallback
+        // 2. Converters for legacy/raw data
+        var ytMatch = Regex.Match(url, @"(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|shorts)\/|.*[?&]v=)|youtu\.be\/)([^""&?\/\s]{11})", RegexOptions.IgnoreCase);
+        if (ytMatch.Success) return $"https://www.youtube.com/embed/{ytMatch.Groups[1].Value}";
+
+        var vimeoMatch = Regex.Match(url, @"(?:vimeo\.com\/|player\.vimeo\.com\/video\/)(\d+)", RegexOptions.IgnoreCase);
+        if (vimeoMatch.Success) return $"https://player.vimeo.com/video/{vimeoMatch.Groups[1].Value}";
+
+        if (url.Contains("facebook.com") || url.Contains("fb.watch"))
+        {
+            return $"https://www.facebook.com/plugins/video.php?href={System.Net.WebUtility.UrlEncode(url)}&show_text=false&width=560";
+        }
+
+        return url;
+    }
+
+
+    public bool IsVerticalVideo(string url)
+    {
+        if (string.IsNullOrEmpty(url)) return false;
+        url = url.ToLower();
+       
+        var decoded = System.Net.WebUtility.UrlDecode(url);
+        return decoded.Contains("/reel/") || decoded.Contains("/shorts/");
     }
 }

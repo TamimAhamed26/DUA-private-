@@ -1,6 +1,4 @@
-﻿
-
-$(document).ready(function () {
+﻿$(document).ready(function () {
 
     // Expand / collapse action drawer
     $(document).on("click", ".js-expand-actions", function () {
@@ -38,9 +36,6 @@ $(document).ready(function () {
     const urls = window.productConfig ? window.productConfig.urls : {};
 
     // [CORRECTION] AJAX INTERCEPTOR (The Fix)
-    // This wraps the core jQuery AJAX function. It runs BEFORE your specific success callbacks.
-    // If the server says "Access Denied", it redirects immediately and BLOCKS the specific 
-    // success callback (preventing the alert from showing).
     (function ($) {
         var originalAjax = $.ajax;
         $.ajax = function (options) {
@@ -279,7 +274,6 @@ $(document).ready(function () {
     // ============================================================
 
     // 1. View Variants Button
-    // 1. View Variants Button
     $('.btn-view-variants').on('click', function () {
         var productId = $(this).data('product-id');
         var productName = $(this).data('product-name');
@@ -325,7 +319,6 @@ $(document).ready(function () {
     });
 
     // 3. View Details
-    // 3. View Details
     $('.js-view-details').on('click', function () {
         let $button = $(this);
         let productId = $button.data('product-id');
@@ -346,7 +339,6 @@ $(document).ready(function () {
         });
     });
 
-    // 4. Edit Product (Main)
     // 4. Edit Product (Main)
     $('.js-edit-product').on('click', function () {
         let $button = $(this);
@@ -616,7 +608,6 @@ $(document).ready(function () {
     // 7. DISCOUNT MODAL LOGIC
     // ============================================================
 
-    // 1. Open Modal
     // 1. Open Modal (Discounts)
     $('.js-manage-discounts').on('click', function () {
         let productId = $(this).data('product-id');
@@ -756,13 +747,44 @@ $(document).ready(function () {
             });
         }
     });
-    //video
-
 
     // ============================================================
     // 10. MANAGE VIDEOS (Video Logic)
     // ============================================================
 
+    // Helper: Determine Embed URL (Client-Side Logic)
+    // Helper: Determine Embed URL (Client-Side Logic)
+    function getEmbedUrl(url) {
+        if (!url) return null;
+
+        // 0. SAFETY CHECK: If it's already a valid Facebook/Vimeo embed, return it as-is.
+    
+        if (url.includes("facebook.com/plugins/video.php") ||
+            url.includes("player.vimeo.com/video/")) {
+            return url;
+        }
+
+        // 1. YouTube (Handles Standard, Shorts, Embed, Youtu.be)
+        // Matches: /shorts/, /embed/, /v/, ?v=
+        const ytMatch = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|shorts)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i);
+        if (ytMatch && ytMatch[1]) {
+            return `https://www.youtube.com/embed/${ytMatch[1]}`;
+        }
+
+        // 2. Vimeo (Handles vimeo.com/ID and player.vimeo.com/video/ID)
+        const vimeoMatch = url.match(/(?:vimeo\.com\/|player\.vimeo\.com\/video\/)(\d+)/i);
+        if (vimeoMatch && vimeoMatch[1]) {
+            return `https://player.vimeo.com/video/${vimeoMatch[1]}`;
+        }
+
+        // 3. Facebook
+        // If it's a raw FB link (Watch, Page Video, fb.watch), we encode it.
+        if (url.includes("facebook.com") || url.includes("fb.watch")) {
+            return `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(url)}&show_text=false&width=560`;
+        }
+
+        return null;
+    }
     // A. Open Modal
     $(document).on('click', '.js-manage-videos', function () {
         const productId = $(this).data('product-id');
@@ -771,7 +793,7 @@ $(document).ready(function () {
         // 1. Set Title
         $('#modal-video-product-name').text(productName);
 
-        // 2. Initialize and Show Modal using jQuery (Matches your other modals)
+        // 2. Initialize and Show Modal using jQuery
         $('#productVideosModal').modal('show');
 
         // 3. Load Content
@@ -793,42 +815,78 @@ $(document).ready(function () {
             });
     }
 
-    // B. Add Video (Submit Form)
-    // Note: Since the form is loaded via AJAX, we use delegation on 'body' or 'document'
+    // B. Live Preview & Input Event
+    // B. Live Preview
+    // B. Live Preview & Input Event
+    $(document).on('input paste', '#video-url-input', function () {
+        const url = $(this).val().trim();
+        const embedUrl = getEmbedUrl(url);
+        const $preview = $('#video-preview-container');
+        const $error = $('#video-url-error');
+        const $btn = $('#btn-save-video');
+
+        // Reset styling to a neutral box
+        $preview.css({ 'height': '200px', 'width': '100%', 'background': '#000' });
+
+        if (url.length === 0) {
+            $preview.hide().empty();
+            $error.hide();
+            $btn.prop('disabled', false);
+            return;
+        }
+
+        if (embedUrl) {
+            $preview.html(`<iframe src="${embedUrl}" width="100%" height="100%" frameborder="0" allowfullscreen></iframe>`).show();
+            $error.hide();
+            $btn.prop('disabled', false);
+        } else if (url.includes("share") || url.includes("fb.watch")) {
+            // SPECIAL CASE: Share links
+            $preview.hide().empty();
+            $error.removeClass("text-danger").addClass("text-warning")
+                .html('<i class="fas fa-info-circle"></i> Share links: Preview unavailable, but valid after saving.').show();
+            $btn.prop('disabled', false); // Allow them to save!
+        } else {
+            // Invalid Link
+            $preview.hide().empty();
+            $error.removeClass("text-warning").addClass("text-danger")
+                .text("Invalid video URL. Supported: YouTube, Vimeo, Facebook.").show();
+            $btn.prop('disabled', true);
+        }
+    });
+    // C. Add Video (Submit Form) with Validation
     $(document).on('submit', '#form-add-video', function (e) {
         e.preventDefault();
+
+        // 1. Client-Side Validation
+        const urlInput = $('#video-url-input').val().trim();
+        if (!getEmbedUrl(urlInput)) {
+            $('#video-url-error').text("Invalid Video URL. Supported: YouTube, Vimeo, Facebook.").show();
+            return false;
+        }
+
         const form = $(this);
         const btn = form.find('button[type="submit"]');
         const productId = form.find('input[name="ProductId"]').val();
 
-        btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Adding...');
+        btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Saving...');
 
         $.post(window.productConfig.urls.addVideo, form.serialize())
             .done(function (res) {
                 if (res.success) {
-                    window.Toast.fire({ icon: 'success', title: 'Video added' });
+                    window.Toast.fire({ icon: 'success', title: 'Video saved successfully' });
                     loadVideos(productId); // Reload list to show new video
                 } else {
                     window.Toast.fire({ icon: 'error', title: res.message });
-                    btn.prop('disabled', false).text('Add Video');
+                    btn.prop('disabled', false).html('<i class="fas fa-save me-1"></i> Save Video');
                 }
             })
             .fail(function () {
                 window.Toast.fire({ icon: 'error', title: 'Server Error' });
-                btn.prop('disabled', false).text('Add Video');
+                btn.prop('disabled', false).html('<i class="fas fa-save me-1"></i> Save Video');
             });
     });
 
-    // ============================================================
-    // C. Delete Video - Logic Update
-    // ============================================================
-
-    let videoIdToDelete = 0;
-    // GOOD: Use jQuery to maintain one instance
-    // ============================================================
-    // C. Delete Video (Swal Version - Fixes Black Drop Issue)
-    // ============================================================
-
+    // D. Delete Video (Swal Version)
     $(document).on('click', '.js-delete-video', function () {
         const videoId = $(this).data('video-id');
         // Get ProductId from the open form to refresh the list later
@@ -839,12 +897,11 @@ $(document).ready(function () {
             text: "This action cannot be undone.",
             icon: 'warning',
             showCancelButton: true,
-            confirmButtonColor: '#dc3545', // Red
-            cancelButtonColor: '#6c757d', // Grey
+            confirmButtonColor: '#dc3545',
+            cancelButtonColor: '#6c757d',
             confirmButtonText: 'Yes, delete it!'
         }).then((result) => {
             if (result.isConfirmed) {
-                // Show loading
                 Swal.showLoading();
 
                 $.ajax({
@@ -868,11 +925,7 @@ $(document).ready(function () {
         });
     });
 
-    // Note: You can now remove the $('#btn-confirm-del-video').click(...) block
-    // and the <div id="deleteVideoModal"> from your HTML if you want to clean up.
-
     // E. Set Primary Video
-    // D. Set Primary Video
     $(document).on('click', '.js-set-primary-video', function () {
         const btn = $(this);
         const originalHtml = btn.html();
@@ -881,7 +934,6 @@ $(document).ready(function () {
         const videoId = btn.data('video-id');
         const productId = btn.data('product-id');
 
-        // ✅ FIX: Use $.ajax
         $.ajax({
             url: window.productConfig.urls.setPrimaryVideo,
             type: 'POST',
@@ -902,6 +954,7 @@ $(document).ready(function () {
             }
         });
     });
+
     // ============================================================
     // 8. PRODUCT IMAGE LOGIC (Cropper.js)
     // ============================================================
@@ -1196,6 +1249,5 @@ $(document).ready(function () {
             }
         });
     });
-    
 
 }); // End of Document Ready
