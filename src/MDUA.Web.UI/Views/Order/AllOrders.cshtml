@@ -79,7 +79,11 @@
                                 <td class="fw-bold text-primary">@orderIdDisplay</td>
                                 <td>@orderType</td>
 
-                                <td class="small">@FormatDate(order.OrderDate)</td>
+                                <td class="small">
+                                    <span class="utc-date" data-utc="@order.OrderDate.ToUtcString()">
+                                        @FormatDate(order.OrderDate)
+                                    </span>
+                                </td>
                                 <td class="fw-bold">Tk. @FormatAmount(order.NetAmount)</td>
 
                                 <td class="text-success fw-bold">

@@ -165,7 +165,7 @@ namespace MDUA.Facade
                                 Phone = orderData.CustomerPhone,
                                 Email = emailToCheck,
                                 IsActive = true,
-                                CreatedAt = DateTime.Now,
+                                CreatedAt = DateTime.UtcNow,
                                 CreatedBy = "System_Order"
                             };
                             transCustomerDA.Insert(newCust);
@@ -201,7 +201,7 @@ namespace MDUA.Facade
                             Country = "Bangladesh",
                             AddressType = "Shipping",
                             CreatedBy = "System_Order",
-                            CreatedAt = DateTime.Now,
+                            CreatedAt = DateTime.UtcNow,
                             PostalCode = orderData.PostalCode ?? "0000",
                             ZipCode = (orderData.ZipCode ?? orderData.PostalCode ?? "0000").ToCharArray()
                         };
@@ -213,11 +213,11 @@ namespace MDUA.Facade
                         orderData.CompanyCustomerId = transCompanyCustomerDA.GetId(companyId, customerId);
                         orderData.AddressId = addressId;
                         orderData.SalesChannelId = 1;
-                        orderData.OrderDate = DateTime.Now;
+                        orderData.OrderDate = DateTime.UtcNow;
                         orderData.Status = "Draft";
                         orderData.IsActive = true;
                         orderData.CreatedBy = "System_Order";
-                        orderData.CreatedAt = DateTime.Now;
+                        orderData.CreatedAt = DateTime.UtcNow;
                         orderData.Confirmed = false;
 
                         // Call InsertSafe (This uses the TotalAmount calculated above)
@@ -233,7 +233,7 @@ namespace MDUA.Facade
                             Quantity = orderData.OrderQuantity,
                             UnitPrice = finalUnitPrice,
                             CreatedBy = "System_Order",
-                            CreatedAt = DateTime.Now
+                            CreatedAt = DateTime.UtcNow
                         };
                         transDetailDA.InsertSalesOrderDetailSafe(detail);
 
@@ -333,11 +333,11 @@ namespace MDUA.Facade
                         var delivery = new Delivery
                         {
                             SalesOrderId = orderId,
-                            TrackingNumber = "TRK-" + DateTime.Now.Ticks.ToString().Substring(12),
+                            TrackingNumber = "TRK-" + DateTime.UtcNow.Ticks.ToString().Substring(12),
                             Status = "Pending",
                             ShippingCost = actualCost,
                             CreatedBy = "System_Confirm",
-                            CreatedAt = DateTime.Now
+                            CreatedAt = DateTime.UtcNow
                         };
 
                         _deliveryDataAccess.InsertExtended(delivery);
@@ -372,7 +372,7 @@ namespace MDUA.Facade
             // Auto-set ActualDeliveryDate if delivered
             if (newStatus.Equals("Delivered", StringComparison.OrdinalIgnoreCase))
             {
-                delivery.ActualDeliveryDate = DateTime.Now;
+                delivery.ActualDeliveryDate = DateTime.UtcNow;
             }
 
             _deliveryDataAccess.UpdateExtended(delivery);
@@ -573,7 +573,7 @@ namespace MDUA.Facade
                                 Phone = orderData.CustomerPhone,
                                 Email = finalEmail,
                                 IsActive = true,
-                                CreatedAt = DateTime.Now,
+                                CreatedAt = DateTime.UtcNow,
                                 CreatedBy = "Admin"
                             };
                             transCustomerDA.Insert(newCust);
@@ -608,7 +608,7 @@ namespace MDUA.Facade
                             Country = "Bangladesh",
                             AddressType = "Shipping",
                             CreatedBy = "Admin",
-                            CreatedAt = DateTime.Now,
+                            CreatedAt = DateTime.UtcNow,
                             PostalCode = orderData.PostalCode ?? "0000",
                             ZipCode = (orderData.ZipCode ?? "0000").ToCharArray()
                         };
@@ -619,11 +619,11 @@ namespace MDUA.Facade
                         orderData.CompanyCustomerId = transCompanyCustomerDA.GetId(orderData.TargetCompanyId, customerId);
                         orderData.AddressId = addressId;
                         orderData.SalesChannelId = 2; // Direct
-                        orderData.OrderDate = DateTime.Now;
+                        orderData.OrderDate = DateTime.UtcNow;
                         orderData.Status = orderData.Confirmed ? "Confirmed" : "Draft";
                         orderData.IsActive = true;
                         orderData.CreatedBy = "Admin";
-                        orderData.CreatedAt = DateTime.Now;
+                        orderData.CreatedAt = DateTime.UtcNow;
 
                         int orderId = (int)transOrderDA.InsertSalesOrderHeaderSafe(orderData);
 
@@ -635,7 +635,7 @@ namespace MDUA.Facade
                             Quantity = orderData.OrderQuantity,
                             UnitPrice = finalUnitPrice, // Store Net Unit Price
                             CreatedBy = "Admin",
-                            CreatedAt = DateTime.Now
+                            CreatedAt = DateTime.UtcNow
                         });
 
                         // ------------------------------------------------------------------
@@ -656,11 +656,11 @@ namespace MDUA.Facade
                             var delivery = new Delivery
                             {
                                 SalesOrderId = orderId,
-                                TrackingNumber = "DO-" + DateTime.Now.Ticks.ToString().Substring(12),
+                                TrackingNumber = "DO-" + DateTime.UtcNow.Ticks.ToString().Substring(12),
                                 Status = "Pending",
                                 ShippingCost = actualCost, // ✅ EXPENSE FROZEN
                                 CreatedBy = "Admin_Direct",
-                                CreatedAt = DateTime.Now
+                                CreatedAt = DateTime.UtcNow
                             };
 
                             // Use the Extended Insert logic we fixed earlier

@@ -35,7 +35,7 @@
             <div class="row g-2 mt-2">
                 <div class="col-md-6">
                     <label class="small fw-bold">Effective From</label>
-                    <input type="date" name="EffectiveFrom" class="form-control form-control-sm" value="@DateTime.Now.ToString("yyyy-MM-dd")" required />
+                    <input type="date" id="newDiscountEffectiveFrom" name="EffectiveFrom" class="form-control form-control-sm" required />
                 </div>
                 <div class="col-md-6">
                     <label class="small fw-bold">Effective To</label>
@@ -85,14 +85,21 @@
                             <span class="display-value">@d.MinQuantity</span>
                             <input type="number" class="form-control form-control-sm edit-input" value="@d.MinQuantity" style="display:none; width: 60px;" />
                         </td>
+
                         <td data-col="from">
-                            <span class="display-value">@d.EffectiveFrom.ToString("dd MMM yyyy")</span>
+                            <span class="display-value">
+                                @d.EffectiveFrom.ToString("dd MMM yyyy")
+                            </span>
                             <input type="date" class="form-control form-control-sm edit-input" value="@d.EffectiveFrom.ToString("yyyy-MM-dd")" style="display:none;" />
                         </td>
+
                         <td data-col="to">
-                            <span class="display-value">@(d.EffectiveTo?.ToString("dd MMM yyyy") ?? "-")</span>
+                            <span class="display-value">
+                                @(d.EffectiveTo?.ToString("dd MMM yyyy") ?? "-")
+                            </span>
                             <input type="date" class="form-control form-control-sm edit-input" value="@(d.EffectiveTo?.ToString("yyyy-MM-dd"))" style="display:none;" />
                         </td>
+
                         <td data-col="active">
                             <span class="display-value badge @(d.IsActive ? "bg-success" : "bg-secondary")">@(d.IsActive ? "Active" : "Inactive")</span>
                             <select class="form-control form-control-sm edit-input" style="display:none;">
@@ -114,3 +121,16 @@
         </tbody>
     </table>
 </div>
+
+<script>
+    (function() {
+        var addInput = document.getElementById('newDiscountEffectiveFrom');
+        if (addInput && !addInput.value) {
+            var now = new Date();
+            var y = now.getFullYear();
+            var m = String(now.getMonth() + 1).padStart(2, '0');
+            var d = String(now.getDate()).padStart(2, '0');
+            addInput.value = `${y}-${m}-${d}`;
+        }
+    })();
+</script>

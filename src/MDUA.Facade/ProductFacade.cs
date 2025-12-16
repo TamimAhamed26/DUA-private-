@@ -418,7 +418,6 @@ namespace MDUA.Facade
 
             return product;
         }
-        // ... inside the ProductFacade class
 
         public ProductResult GetProductForEdit(int productId)
         {
@@ -433,7 +432,6 @@ namespace MDUA.Facade
             return model;
         }
 
-        // This method is unchanged and still correct
         public long UpdateProduct(Product product, string username)
         {
             product.UpdatedBy = username;
@@ -442,14 +440,11 @@ namespace MDUA.Facade
         }
         public long UpdateVariantPrice(int variantId, decimal newPrice, string newSku)
         {
-            // Pass only the ID and the new Price
             return _variantPriceStockDataAccess.UpdatePrice(variantId, newPrice,  newSku);
         }
         public long DeleteVariant(int variantId)
         {
-            // ✅ Use the existing .Delete() method
-            // Since your database has "ON DELETE CASCADE", 
-            // this simple delete is all you need.
+         
             return _ProductVariantDataAccess.Delete(variantId);
         }
 
@@ -458,7 +453,6 @@ namespace MDUA.Facade
             return _attributeNameDataAccess.GetByProductId(productId);
         }
 
-        // Ensure you have this method to handle the saving
         public long AddVariantToExistingProduct(ProductVariant variant)
         {
             // 1. Insert Variant
@@ -525,7 +519,6 @@ namespace MDUA.Facade
             return result;
                 }
 
-        // 1. Get Missing Attributes
         public List<AttributeName> GetMissingAttributesForVariant(int productId, int variantId)
         {
             return _attributeNameDataAccess.GetMissingAttributesForVariant(productId, variantId);
@@ -565,14 +558,14 @@ namespace MDUA.Facade
         public long AddDiscount(ProductDiscount discount)
         {
             // Set defaults if needed
-            discount.CreatedAt = DateTime.Now;
-            discount.UpdatedAt = DateTime.Now;
+            discount.CreatedAt = DateTime.UtcNow;
+            discount.UpdatedAt = DateTime.UtcNow;
             return _ProductDiscountDataAccess.Insert(discount);
         }
 
         public long UpdateDiscount(ProductDiscount discount)
         {
-            discount.UpdatedAt = DateTime.Now;
+            discount.UpdatedAt = DateTime.UtcNow;
             return _ProductDiscountDataAccess.Update(discount);
         }
 
@@ -612,7 +605,7 @@ namespace MDUA.Facade
             var allDiscounts = _ProductDiscountDataAccess.GetByProductId(productId);
 
             // 2. Filter for currently active (Date range + IsActive flag)
-            var now = DateTime.Now;
+            var now = DateTime.UtcNow;
             var validDiscounts = allDiscounts
                 .Where(d => d.IsActive
                          && d.EffectiveFrom <= now
@@ -672,7 +665,7 @@ namespace MDUA.Facade
                 SortOrder = existingImages.Count + 1, // Auto-increment sort order
                 AltText = "Product Image",
                 CreatedBy = username,
-                CreatedAt = DateTime.Now
+                CreatedAt = DateTime.UtcNow
             };
             return _ProductImageDataAccess.Insert(img);
         }
@@ -799,12 +792,12 @@ namespace MDUA.Facade
 
             // 2. Audit Fields
             video.CreatedBy = username;
-            video.CreatedAt = DateTime.Now;
+            video.CreatedAt = DateTime.UtcNow;
 
             // ✅ FIX: Set UpdatedAt to prevent "SqlDateTime overflow" error (0001-01-01)
             // Your Stored Procedure inserts this column, so it must be valid.
             video.UpdatedBy = username;
-            video.UpdatedAt = DateTime.Now;
+            video.UpdatedAt = DateTime.UtcNow;
 
             // ✅ FIX: Ensure ThumbnailUrl isn't null if DB expects a string
             if (string.IsNullOrEmpty(video.ThumbnailUrl)) video.ThumbnailUrl = "";
@@ -839,7 +832,7 @@ namespace MDUA.Facade
                 {
                     currentPrimary.IsPrimary = false;
                     currentPrimary.UpdatedBy = username;
-                    currentPrimary.UpdatedAt = DateTime.Now;
+                    currentPrimary.UpdatedAt = DateTime.UtcNow;
                     _productVideoDataAccess.Update(currentPrimary);
                 }
             }
@@ -923,7 +916,7 @@ namespace MDUA.Facade
                 if (nextPrimary != null)
                 {
                     nextPrimary.IsPrimary = true;
-                    nextPrimary.UpdatedAt = DateTime.Now;
+                    nextPrimary.UpdatedAt = DateTime.UtcNow;
                     // Note: We don't have the username passed to this method signature, 
                     // but since it's an auto-system action, null/empty UpdatedBy is often acceptable.
 
@@ -950,7 +943,7 @@ namespace MDUA.Facade
                 {
                     v.IsPrimary = shouldBePrimary;
                     v.UpdatedBy = username;
-                    v.UpdatedAt = DateTime.Now;
+                    v.UpdatedAt = DateTime.UtcNow;
 
                     _productVideoDataAccess.Update(v);
                 }

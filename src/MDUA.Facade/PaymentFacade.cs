@@ -90,13 +90,13 @@ namespace MDUA.Facade
                         {
                             SalesOrderDetailId = orderDetail.Id,
                             InOut = "IN",
-                            Date = DateTime.Now,
+                            Date = DateTime.UtcNow,
                             Price = payment.Amount,
                             Quantity = orderDetail.Quantity,
                             ProductVariantId = orderDetail.ProductVariantId,
                             Remarks = "Payment: " + payment.Notes,
                             CreatedBy = payment.CreatedBy,
-                            CreatedAt = DateTime.Now
+                            CreatedAt = DateTime.UtcNow
                         };
                         long newId = invDa.Insert(invTrx);
                         if (newId > 0) invTrxId = (int)newId;

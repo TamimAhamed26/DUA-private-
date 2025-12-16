@@ -59,7 +59,7 @@ namespace MDUA.DataAccess
                         VariantPrice = reader.IsDBNull(5) ? (decimal?)null : reader.GetDecimal(5),
                         IsActive = reader.IsDBNull(6) ? true : reader.GetBoolean(6),
                         CreatedBy = reader.IsDBNull(7) ? "" : reader.GetString(7),
-                        CreatedAt = reader.IsDBNull(8) ? DateTime.Now : reader.GetDateTime(8),
+                        CreatedAt = reader.IsDBNull(8) ? DateTime.UtcNow : reader.GetDateTime(8),
                         UpdatedBy = reader.IsDBNull(9) ? "" : reader.GetString(9),
                         UpdatedAt = reader.IsDBNull(10) ? (DateTime?)null : reader.GetDateTime(10),
                         // stock and optional price from VariantPriceStock
@@ -185,7 +185,7 @@ namespace MDUA.DataAccess
                         VariantPrice = reader.IsDBNull(5) ? (decimal?)null : reader.GetDecimal(5),
                         IsActive = reader.IsDBNull(6) ? true : reader.GetBoolean(6),
                         CreatedBy = reader.IsDBNull(7) ? "" : reader.GetString(7),
-                        CreatedAt = reader.IsDBNull(8) ? DateTime.Now : reader.GetDateTime(8),
+                        CreatedAt = reader.IsDBNull(8) ? DateTime.UtcNow : reader.GetDateTime(8),
                         UpdatedBy = reader.IsDBNull(9) ? "" : reader.GetString(9),
                         UpdatedAt = reader.IsDBNull(10) ? (DateTime?)null : reader.GetDateTime(10),
 
