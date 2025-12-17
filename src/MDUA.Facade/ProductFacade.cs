@@ -92,7 +92,10 @@ namespace MDUA.Facade
             product.Images = _ProductImageDataAccess.GetByProductId(product.Id);
             product.Reviews = _ProductReviewDataAccess.GetByProductId(product.Id);
             product.Variants = _ProductVariantDataAccess.GetByProductId(product.Id);
-            // Note: We don't fetch ActiveDiscount here anymore, we calculate BestDiscount below
+            // Note: We don't fetch Active
+            //
+            //
+            // here anymore, we calculate BestDiscount below
 
             // 2. Load Dynamic Specifications (Truth-Based)
             product.Specifications = _attributeNameDataAccess.GetSpecificationsByProductId(product.Id);
@@ -246,80 +249,194 @@ namespace MDUA.Facade
             return product;
         }
         public long AddProduct(Product product, string username, int companyId)
+
         {
+
             if (product == null)
+
                 throw new ArgumentNullException(nameof(product));
 
             product.CompanyId = companyId;
+
             product.CreatedBy = username;
+
             product.UpdatedBy = username;
-            product.CreatedAt = DateTime.UtcNow;// [cite_start]// [cite: 135]
-            product.UpdatedAt = DateTime.UtcNow; //[cite_start]// [cite: 135]
+
+            product.CreatedAt = DateTime.UtcNow;
+
+            product.UpdatedAt = DateTime.UtcNow;
+
             product.ReorderLevel = product.ReorderLevel < 0 ? 0 : product.ReorderLevel;
 
-            // 2️⃣ INSERT PRODUCT
+            // 1️⃣ INSERT PRODUCT
+
             long productId = _ProductDataAccess.Insert(product);
 
             if (productId <= 0)
+
                 return productId;
 
-            if (product.Attributes != null)
+            // 2️⃣ INSERT ATTRIBUTES (If any selected)
+
+            if (product.Attributes != null && product.Attributes.Count > 0)
+
             {
+
                 int displayOrder = 1;
+
                 foreach (var attr in product.Attributes)
+
                 {
-                    // The binder only set AttributeId, we set the rest
+
                     attr.ProductId = (int)productId;
+
                     attr.DisplayOrder = displayOrder++;
 
-                    // Call the new DA class to insert
                     _productAttributeDataAccess.Insert(attr);
+
                 }
+
             }
 
-            // 3️⃣ INSERT VARIANTS
-            foreach (var variant in product.Variants)
+            // 3️⃣ HANDLE VARIANTS
+
+            // If user provided variants (e.g. Size: S, M, L), insert them normally.
+
+            if (product.Variants != null && product.Variants.Count > 0)
+
             {
-                variant.ProductId = (int)productId;
-                variant.CreatedBy = username;
-                variant.CreatedAt = DateTime.UtcNow; //[cite_start]// [cite: 142]
-                // Insert ProductVariant row
-                int variantId = _ProductVariantDataAccess.Insert(variant);
-                if (variantId > 0)
+
+                foreach (var variant in product.Variants)
+
                 {
-                    var vps = new VariantPriceStock
+
+                    variant.ProductId = (int)productId;
+
+                    variant.CreatedBy = username;
+
+                    variant.CreatedAt = DateTime.UtcNow;
+
+                    int variantId = _ProductVariantDataAccess.Insert(variant);
+
+                    if (variantId > 0)
+
                     {
-                        Id = variantId, // Use the new Variant ID
-                        Price = variant.VariantPrice ?? 0, // Get price from the form
-                        CompareAtPrice = null, // Default
-                        CostPrice = null, // Default
-                        StockQty = 0, // Default stock is 0
-                        TrackInventory = true, // Default from your table
-                        AllowBackorder = false, // Default from your table
-                        WeightGrams = null // Default
+
+                        var vps = new VariantPriceStock
+
+                        {
+
+                            Id = variantId,
+
+                            Price = (decimal)(variant.VariantPrice ?? product.BasePrice), // Fallback to Base Price
+
+                            CompareAtPrice = null,
+
+                            CostPrice = null,
+
+                            StockQty = 0,
+
+                            TrackInventory = true,
+
+                            AllowBackorder = false,
+
+                            WeightGrams = null
+
+                        };
+
+                        _variantPriceStockDataAccess.Insert(vps);
+
+                        // Insert Attribute Values for this specific variant
+
+                        if (variant.AttributeValueIds != null)
+
+                        {
+
+                            int displayOrder = 1;
+
+                            foreach (int valueId in variant.AttributeValueIds)
+
+                            {
+
+                                _ProductVariantDataAccess.InsertVariantAttributeValue(
+
+                                    variantId, valueId, displayOrder++);
+
+                            }
+
+                        }
+
+                    }
+
+                }
+
+            }
+
+            else
+
+            {
+
+                // ✅ DEFAULT VARIANT LOGIC (For Simple Products)
+
+                // If NO variants were provided, create one "Standard" variant automatically.
+
+                // This ensures SalesOrderDetail and Inventory tables can link to a Variant ID.
+
+                var defaultVariant = new ProductVariant
+
+                {
+
+                    ProductId = (int)productId,
+
+                    VariantName = "Standard", // Internal name for simple products
+                    VariantPrice = (decimal)( product.BasePrice), // Fallback to Base Price
+
+                    IsActive = true,
+
+                    CreatedBy = username,
+
+                    CreatedAt = DateTime.UtcNow
+
+                };
+
+                int defaultVariantId = _ProductVariantDataAccess.Insert(defaultVariant);
+
+                if (defaultVariantId > 0)
+
+                {
+
+                    // Link Price & Stock to this default variant
+
+                    var vps = new VariantPriceStock
+
+                    {
+
+                        Id = defaultVariantId,
+
+                        Price = (decimal)product.BasePrice, // Use the product's main price
+
+                        CompareAtPrice = null,
+
+                        CostPrice = null,
+
+                        StockQty = 0, // Default stock 0, updated via Purchase later
+
+                        TrackInventory = true,
+
+                        AllowBackorder = false,
+
+                        WeightGrams = null
+
                     };
 
-                    // Call the new DA class to insert
                     _variantPriceStockDataAccess.Insert(vps);
+
                 }
 
-                // 4️⃣ INSERT VARIANT ATTRIBUTE VALUES
-                if (variant.AttributeValueIds != null)
-                {
-                    int displayOrder = 1;
-
-                    foreach (int valueId in variant.AttributeValueIds)
-                    {
-                        _ProductVariantDataAccess.InsertVariantAttributeValue(
-                            variantId,
-                            valueId,
-                            displayOrder++
-                        );
-                    }
-                }
             }
 
             return productId;
+
         }
 
         public ProductList GetLastFiveProducts()
@@ -599,13 +716,15 @@ namespace MDUA.Facade
         }
 
         // Helper to find the single best discount from a list of potential discounts
+        // In src/MDUA.Facade/ProductFacade.cs
+
         public ProductDiscount GetBestDiscount(int productId, decimal basePrice)
         {
-            // 1. Get ALL discounts for this product
             var allDiscounts = _ProductDiscountDataAccess.GetByProductId(productId);
 
-            // 2. Filter for currently active (Date range + IsActive flag)
-            var now = DateTime.UtcNow;
+            DateTime now = DateTime.UtcNow;
+
+            // 3. Filter discounts
             var validDiscounts = allDiscounts
                 .Where(d => d.IsActive
                          && d.EffectiveFrom <= now
@@ -614,7 +733,7 @@ namespace MDUA.Facade
 
             if (!validDiscounts.Any()) return null;
 
-            // 3. Calculate which one gives the LOWEST price
+            // 4. Calculate the Best Price Strategy (lowest price wins)
             ProductDiscount bestDiscount = null;
             decimal lowestPriceFound = basePrice;
 
@@ -622,16 +741,18 @@ namespace MDUA.Facade
             {
                 decimal calculatedPrice = basePrice;
 
-                if (d.DiscountType == "Flat")
+                if (string.Equals(d.DiscountType, "Flat", StringComparison.OrdinalIgnoreCase))
                 {
                     calculatedPrice -= d.DiscountValue;
                 }
-                else if (d.DiscountType == "Percentage")
+                else if (string.Equals(d.DiscountType, "Percentage", StringComparison.OrdinalIgnoreCase))
                 {
                     calculatedPrice -= (basePrice * (d.DiscountValue / 100));
                 }
 
-                // If this discount results in a lower price, it's the new winner
+                // Ensure price doesn't drop below zero
+                calculatedPrice = Math.Max(calculatedPrice, 0);
+
                 if (calculatedPrice < lowestPriceFound)
                 {
                     lowestPriceFound = calculatedPrice;
@@ -641,8 +762,6 @@ namespace MDUA.Facade
 
             return bestDiscount;
         }
-        // In ProductFacade.cs
-
         public List<ProductImage> GetProductImages(int productId)
         {
             // Calls the Data Access layer

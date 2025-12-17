@@ -45,7 +45,9 @@
 
                         <div class="detail-group">
                             <label class="small text-muted fw-bold d-block">Description</label>
-                            <p class="small text-secondary mb-0">@(Model.Description ?? "No description provided.")</p>
+                            <div class="small text-secondary mb-0">
+                                @Html.Raw(Model.Description ?? "No description provided.")
+                            </div>
                         </div>
                     </div>
 

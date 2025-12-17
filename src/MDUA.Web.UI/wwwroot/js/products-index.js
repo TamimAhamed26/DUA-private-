@@ -27,6 +27,7 @@
             $thisButton.find("span").html("&#9650;"); // Arrow Up
         }
     });
+
     // ============================================================
     // 1. GLOBAL CONFIGURATION & VARIABLES
     // ============================================================
@@ -35,21 +36,16 @@
     let modalBody = $('#modal-variants-content');
     const urls = window.productConfig ? window.productConfig.urls : {};
 
-    // [CORRECTION] AJAX INTERCEPTOR (The Fix)
+    // AJAX INTERCEPTOR
     (function ($) {
         var originalAjax = $.ajax;
         $.ajax = function (options) {
             var originalSuccess = options.success;
-
-            // Wrap the success callback
             options.success = function (data, textStatus, xhr) {
-                // 1. Check for Redirect Logic First
                 if (data && data.success === false && data.redirectUrl) {
                     window.location.href = data.redirectUrl;
-                    return; // <--- STOP HERE. Do not run the original success (No Alert!)
+                    return;
                 }
-
-                // 2. If no redirect, run the original logic (e.g., show success/error alerts)
                 if (originalSuccess) {
                     originalSuccess(data, textStatus, xhr);
                 }
@@ -62,6 +58,7 @@
     // 2. HELPER FUNCTIONS
     // ============================================================
 
+    // 🟢 NEW HELPER: Update Variant Image Count Badge in Real-Time
     // Helper: Update Main Grid Price without Reload
     function updateMainGridPrice(productId) {
         let $row = $(`tr[data-product-row-id="${productId}"]`);
@@ -69,16 +66,24 @@
 
         if ($row.length === 0) return;
 
-        $.get(urls.getUpdatedPrice, { productId: productId }, function (data) {
+        // ✅ FIX: Added timestamp { _: new Date().getTime() } to prevent caching
+        $.get(urls.getUpdatedPrice, { productId: productId, _: new Date().getTime() }, function (data) {
             if (data.success) {
                 let html = '';
+
+                // Server calculates 'hasDiscount' based on current Date+Time
                 if (data.hasDiscount) {
-                    html = `<span class="original-price">${data.originalPrice}</span><br/>
-                            <span class="discounted-price">${data.sellingPrice}</span>`;
+                    // Applied CSS classes for red/strikethrough styling
+                    html = `<span class="original-price">${data.originalPrice}</span>
+                        <span class="discounted-price">${data.sellingPrice}</span>`;
                 } else {
-                    html = `<span>${data.originalPrice}</span>`;
+                    html = `<span class="fw-bold text-dark">${data.originalPrice}</span>`;
                 }
+
                 $cell.html(html);
+
+                // Optional: visual flash to indicate update
+                $cell.hide().fadeIn(300);
             }
         });
     }
@@ -86,14 +91,11 @@
     // Helper: Prevent selecting the same attribute twice across rows
     function updateDropdownAvailability() {
         let selectedValues = [];
-
-        // Gather currently selected attribute IDs
         $('.attr-name-select').each(function () {
             let v = $(this).val();
             if (v) selectedValues.push(v);
         });
 
-        // Disable those IDs in other dropdowns
         $('.attr-name-select').each(function () {
             let myVal = $(this).val();
             $(this).find('option').each(function () {
@@ -149,7 +151,6 @@
     // HANDLER: Remove Row
     $(document).on('click', '.remove-attr-row', function () {
         $(this).closest('.dynamic-attr-row').remove();
-        // Re-index inputs
         $('#dynamic-attributes-container .dynamic-attr-row').each(function (idx) {
             $(this).find('.final-value-id').attr('name', `AttributeValueIds[${idx}]`);
         });
@@ -200,13 +201,11 @@
         let parts = [productName];
         let isValid = true;
 
-        // 1. Validate: Must have at least one attribute row
         if ($('.dynamic-attr-row').length === 0) {
             alert("Please add at least one attribute.");
             return;
         }
 
-        // 2. Validate: All dropdowns must be selected
         $('.attr-value-select').each(function () {
             if (!$(this).val()) {
                 isValid = false;
@@ -222,10 +221,7 @@
             return;
         }
 
-        // 3. Construct the proposed name
         let proposedName = parts.join(' - ');
-
-        // 4. DUPLICATE CHECK
         let isDuplicate = false;
         $('.variants-table-modal tbody tr').each(function () {
             let existingName = $(this).find('td:first').text().trim();
@@ -241,7 +237,6 @@
             return;
         }
 
-        // 5. Set Name and Submit
         $('#new-variant-name').val(proposedName);
         let $btn = $(this);
         $btn.prop('disabled', true).text('Saving...');
@@ -256,7 +251,7 @@
                     let productId = $form.find('input[name="ProductId"]').val();
                     $.get(urls.getVariantsPartial, { productId: productId }, function (html) {
                         $('#modal-variants-content').html(html);
-                        addAttributeRow(); // Start fresh
+                        addAttributeRow();
                     });
                 } else {
                     alert('Error: ' + data.message);
@@ -270,18 +265,16 @@
     });
 
     // ============================================================
-    // 5. MAIN PAGE HANDLERS
+    // 5. MAIN PAGE HANDLERS (FIXED WITH EVENT DELEGATION)
     // ============================================================
 
     // 1. View Variants Button
-    $('.btn-view-variants').on('click', function () {
+    $(document).on('click', '.btn-view-variants', function () {
         var productId = $(this).data('product-id');
         var productName = $(this).data('product-name');
 
         $('#modal-product-name').text(productName);
         $('#modal-variants-content').html('<div class="loading-spinner"></div>');
-
-        // [FIX] Open the modal!
         $('#productVariantsModal').modal('show');
 
         $.get(urls.getVariantsPartial, { productId: productId }, function (data) {
@@ -293,7 +286,7 @@
     });
 
     // 2. Toggle Status
-    $('.js-toggle-status').on('click', function () {
+    $(document).on('click', '.js-toggle-status', function () {
         let $button = $(this);
         let productId = $button.data('product-id');
         $button.prop('disabled', true);
@@ -319,17 +312,13 @@
     });
 
     // 3. View Details
-    $('.js-view-details').on('click', function () {
+    $(document).on('click', '.js-view-details', function () {
         let $button = $(this);
         let productId = $button.data('product-id');
-
-        // [FIX] Get name directly from button (requires HTML update above)
         let productName = $button.data('product-name');
 
         $('#productDetailsModalLabel').text("Details for " + productName);
         $('#modal-details-content').html('<div class="loading-spinner"></div>');
-
-        // [FIX] Open the modal!
         $('#productDetailsModal').modal('show');
 
         $.get(urls.getProductDetailsPartial, { productId: productId }, function (data) {
@@ -340,15 +329,13 @@
     });
 
     // 4. Edit Product (Main)
-    $('.js-edit-product').on('click', function () {
+    $(document).on('click', '.js-edit-product', function () {
         let $button = $(this);
         let productId = $button.data('product-id');
         let productName = $button.data('product-name');
 
         $('#editProductModalLabel').text("Edit: " + productName);
         $('#modal-edit-content').html('<div class="loading-spinner"></div>');
-
-        // [FIX] Open the modal!
         $('#editProductModal').modal('show');
 
         $.get(urls.getEditPartial, { productId: productId }, function (data) {
@@ -359,14 +346,12 @@
     });
 
     // 5. Delete Product
-    $('.js-delete-product').on('click', function () {
+    $(document).on('click', '.js-delete-product', function () {
         let productId = $(this).data('product-id');
         let productName = $(this).data('product-name');
 
         $('#modal-delete-product-name').text(productName);
         $('#confirm-delete-button').data('product-id', productId);
-
-        // [FIX] Open the modal!
         $('#deleteProductModal').modal('show');
     });
 
@@ -396,25 +381,18 @@
             success: function (data) {
                 if (data.success) {
                     $('#deleteProductModal').modal('hide');
-                    // 1. Remove the row from the table smoothly
                     const $targetRows = $(`tr[data-product-row-id="${productId}"], #drawer-${productId}`);
-
-                    // Fade out and remove both
                     $targetRows.fadeOut(300, function () {
                         $(this).remove();
                     });
-
-                    // 2. FIRE THE TOAST (Success)
                     window.Toast.fire({
                         icon: 'success',
                         title: 'Product deleted successfully!'
                     });
-
                 } else {
-                    // FIRE THE TOAST (Error)
                     window.Toast.fire({
                         icon: 'error',
-                        title: res.message || 'Failed to delete product.'
+                        title: data.message || 'Failed to delete product.'
                     });
                 }
             },
@@ -426,7 +404,6 @@
             }
         });
     });
-
     // ============================================================
     // 6. MANAGE VARIANTS LIST (Inline Edit & Delete)
     // ============================================================
@@ -608,15 +585,13 @@
     // 7. DISCOUNT MODAL LOGIC
     // ============================================================
 
-    // 1. Open Modal (Discounts)
-    $('.js-manage-discounts').on('click', function () {
+    // 1. Open Modal (Discounts) - FIXED DELEGATION
+    $(document).on('click', '.js-manage-discounts', function () {
         let productId = $(this).data('product-id');
         let name = $(this).data('product-name');
 
         $('#modal-discount-product-name').text(name);
         $('#modal-discounts-content').html('<div class="loading-spinner"></div>');
-
-        // [FIX] Open the modal!
         $('#productDiscountsModal').modal('show');
 
         $.get(urls.getDiscounts, { productId: productId }, function (html) {
@@ -625,10 +600,34 @@
     });
 
     // 2. Add Discount
+    // 2. Add Discount
     $(document).on('click', '#btn-save-discount', function () {
         let $form = $('#form-add-discount');
         let productId = $form.find('input[name="ProductId"]').val();
         let $btn = $(this);
+
+        // ✅ REAL-WORLD FIX: Convert User's Local Time to UTC before sending
+        // This ensures if you are in UTC+7 and pick 12:51 AM, the server receives the correct UTC time.
+
+        let rawFrom = $form.find('input[name="EffectiveFrom"]').val();
+        let rawTo = $form.find('input[name="EffectiveTo"]').val();
+
+        // Helper to convert local datetime input to UTC ISO string
+        function toUtc(dateStr) {
+            if (!dateStr) return null;
+            return new Date(dateStr).toISOString();
+        }
+
+        let formData = {
+            ProductId: productId,
+            DiscountType: $form.find('select[name="DiscountType"]').val(),
+            DiscountValue: $form.find('input[name="DiscountValue"]').val(),
+            MinQuantity: $form.find('input[name="MinQuantity"]').val(),
+            // Send UTC time
+            EffectiveFrom: toUtc(rawFrom),
+            EffectiveTo: toUtc(rawTo),
+            IsActive: $form.find('select[name="IsActive"]').val()
+        };
 
         $btn.prop('disabled', true).text('Adding...');
 
@@ -636,37 +635,79 @@
             url: urls.addDiscount,
             type: 'POST',
             headers: { 'RequestVerificationToken': token },
-            data: $form.serialize(),
+            data: formData, // ✅ Send the UTC data object instead of .serialize()
             success: function (data) {
                 if (data.success) {
                     $.get(urls.getDiscounts, { productId: productId }, function (html) {
                         $('#modal-discounts-content').html(html);
                     });
                     updateMainGridPrice(productId);
+                    // Clear inputs
+                    $form.find('input[name="EffectiveFrom"], input[name="EffectiveTo"], input[name="DiscountValue"]').val('');
                 } else {
                     alert("Error: " + data.message);
-                    $btn.prop('disabled', false).text('Add Discount');
                 }
             },
-            error: function () {
+            complete: function () {
                 $btn.prop('disabled', false).text('Add Discount');
             }
         });
     });
-
     // 3. Delete Discount
+    // 3. Delete Discount (Swal Replacement)
     $(document).on('click', '.js-delete-discount', function () {
         let $row = $(this).closest('tr');
-        let id = $row.data('id');
+        let discountId = $row.data('id');
         let type = $row.find('td[data-col="type"] .display-value').text();
         let value = $row.find('td[data-col="value"] .display-value').text();
-        let infoText = `${type} : ${value}`;
 
-        $('#modal-delete-discount-info').text(infoText);
-        $('#confirm-delete-discount-button').data('discount-id', id);
-        $('#deleteDiscountModal').modal('show');
+        // Get ProductId to refresh the grid later
+        let productId = $('#form-add-discount input[name="ProductId"]').val();
+
+        Swal.fire({
+            title: 'Delete Discount?',
+            html: `Are you sure you want to delete: <br/><b>${type} : ${value}</b>?`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#dc3545', // Danger Red
+            cancelButtonColor: '#6c757d',
+            confirmButtonText: 'Yes, delete it!'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                // Show loading state
+                Swal.showLoading();
+
+                $.ajax({
+                    url: urls.deleteDiscount,
+                    type: 'POST',
+                    headers: { 'RequestVerificationToken': token },
+                    data: { id: discountId },
+                    success: function (data) {
+                        if (data.success) {
+                            // Show success toast
+                            window.Toast.fire({ icon: 'success', title: 'Discount deleted' });
+
+                            // Remove row with animation
+                            $row.fadeOut(300, function () {
+                                $(this).remove();
+                                if ($('.discounts-table tbody tr').length === 0) {
+                                    $('.discounts-table tbody').html('<tr><td colspan="7" class="text-center text-muted">No discounts found.</td></tr>');
+                                }
+                            });
+
+                            // Update main grid price
+                            updateMainGridPrice(productId);
+                        } else {
+                            window.Toast.fire({ icon: 'error', title: data.message || "Error deleting" });
+                        }
+                    },
+                    error: function () {
+                        window.Toast.fire({ icon: 'error', title: "Server Error" });
+                    }
+                });
+            }
+        });
     });
-
     // 3b. Confirm Delete Discount
     $(document).on('click', '#confirm-delete-discount-button', function () {
         let $btn = $(this);
@@ -702,6 +743,7 @@
     });
 
     // 4. Inline Edit Discount
+    // 4. Inline Edit Discount
     $(document).on('click', '.js-edit-discount', function () {
         let $btn = $(this);
         let $row = $btn.closest('tr');
@@ -715,14 +757,24 @@
             let id = $row.data('id');
             let productId = $('#form-add-discount input[name="ProductId"]').val();
 
+            // ✅ Helper: Convert to UTC before sending
+            function toUtc(dateStr) {
+                if (!dateStr) return null;
+                return new Date(dateStr).toISOString();
+            }
+
+            let rawFrom = $row.find('td[data-col="from"] input').val();
+            let rawTo = $row.find('td[data-col="to"] input').val();
+
             let discount = {
                 Id: id,
                 ProductId: productId,
                 DiscountType: $row.find('td[data-col="type"] select').val(),
                 DiscountValue: $row.find('td[data-col="value"] input').val(),
                 MinQuantity: $row.find('td[data-col="qty"] input').val(),
-                EffectiveFrom: $row.find('td[data-col="from"] input').val(),
-                EffectiveTo: $row.find('td[data-col="to"] input').val(),
+                // ✅ FIX: Convert the edited time (Dhaka) to UTC before sending
+                EffectiveFrom: toUtc(rawFrom),
+                EffectiveTo: toUtc(rawTo),
                 IsActive: $row.find('td[data-col="active"] select').val(),
                 CreatedBy: "",
                 CreatedAt: new Date().toISOString()
@@ -741,62 +793,38 @@
                             $('#modal-discounts-content').html(html);
                         });
                         updateMainGridPrice(productId);
-                    } else { alert("Error saving"); $btn.prop('disabled', false).text('Save'); }
+                    } else { alert("Error saving: " + data.message); $btn.prop('disabled', false).text('Save'); }
                 },
                 error: function () { alert("Server Error"); $btn.prop('disabled', false).text('Save'); }
             });
         }
     });
-
     // ============================================================
     // 10. MANAGE VIDEOS (Video Logic)
     // ============================================================
 
-    // Helper: Determine Embed URL (Client-Side Logic)
-    // Helper: Determine Embed URL (Client-Side Logic)
     function getEmbedUrl(url) {
         if (!url) return null;
+        if (url.includes("facebook.com/plugins/video.php") || url.includes("player.vimeo.com/video/")) return url;
 
-        // 0. SAFETY CHECK: If it's already a valid Facebook/Vimeo embed, return it as-is.
-    
-        if (url.includes("facebook.com/plugins/video.php") ||
-            url.includes("player.vimeo.com/video/")) {
-            return url;
-        }
-
-        // 1. YouTube (Handles Standard, Shorts, Embed, Youtu.be)
-        // Matches: /shorts/, /embed/, /v/, ?v=
         const ytMatch = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|shorts)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i);
-        if (ytMatch && ytMatch[1]) {
-            return `https://www.youtube.com/embed/${ytMatch[1]}`;
-        }
+        if (ytMatch && ytMatch[1]) return `https://www.youtube.com/embed/${ytMatch[1]}`;
 
-        // 2. Vimeo (Handles vimeo.com/ID and player.vimeo.com/video/ID)
         const vimeoMatch = url.match(/(?:vimeo\.com\/|player\.vimeo\.com\/video\/)(\d+)/i);
-        if (vimeoMatch && vimeoMatch[1]) {
-            return `https://player.vimeo.com/video/${vimeoMatch[1]}`;
-        }
+        if (vimeoMatch && vimeoMatch[1]) return `https://player.vimeo.com/video/${vimeoMatch[1]}`;
 
-        // 3. Facebook
-        // If it's a raw FB link (Watch, Page Video, fb.watch), we encode it.
         if (url.includes("facebook.com") || url.includes("fb.watch")) {
             return `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(url)}&show_text=false&width=560`;
         }
-
         return null;
     }
+
     // A. Open Modal
     $(document).on('click', '.js-manage-videos', function () {
         const productId = $(this).data('product-id');
         const productName = $(this).data('product-name');
-
-        // 1. Set Title
         $('#modal-video-product-name').text(productName);
-
-        // 2. Initialize and Show Modal using jQuery
         $('#productVideosModal').modal('show');
-
-        // 3. Load Content
         loadVideos(productId);
     });
 
@@ -804,20 +832,12 @@
     function loadVideos(productId) {
         const container = $('#modal-videos-content');
         container.html('<div class="text-center py-4"><div class="spinner-border text-primary"></div></div>');
-
-        // Use the URL from your config
         $.get(window.productConfig.urls.getVideosPartial, { productId: productId })
-            .done(function (html) {
-                container.html(html);
-            })
-            .fail(function () {
-                container.html('<div class="text-danger text-center">Failed to load videos.</div>');
-            });
+            .done(function (html) { container.html(html); })
+            .fail(function () { container.html('<div class="text-danger text-center">Failed to load videos.</div>'); });
     }
 
-    // B. Live Preview & Input Event
     // B. Live Preview
-    // B. Live Preview & Input Event
     $(document).on('input paste', '#video-url-input', function () {
         const url = $(this).val().trim();
         const embedUrl = getEmbedUrl(url);
@@ -825,7 +845,6 @@
         const $error = $('#video-url-error');
         const $btn = $('#btn-save-video');
 
-        // Reset styling to a neutral box
         $preview.css({ 'height': '200px', 'width': '100%', 'background': '#000' });
 
         if (url.length === 0) {
@@ -840,24 +859,21 @@
             $error.hide();
             $btn.prop('disabled', false);
         } else if (url.includes("share") || url.includes("fb.watch")) {
-            // SPECIAL CASE: Share links
             $preview.hide().empty();
             $error.removeClass("text-danger").addClass("text-warning")
                 .html('<i class="fas fa-info-circle"></i> Share links: Preview unavailable, but valid after saving.').show();
-            $btn.prop('disabled', false); // Allow them to save!
+            $btn.prop('disabled', false);
         } else {
-            // Invalid Link
             $preview.hide().empty();
             $error.removeClass("text-warning").addClass("text-danger")
                 .text("Invalid video URL. Supported: YouTube, Vimeo, Facebook.").show();
             $btn.prop('disabled', true);
         }
     });
-    // C. Add Video (Submit Form) with Validation
+
+    // C. Add Video (Submit Form)
     $(document).on('submit', '#form-add-video', function (e) {
         e.preventDefault();
-
-        // 1. Client-Side Validation
         const urlInput = $('#video-url-input').val().trim();
         if (!getEmbedUrl(urlInput)) {
             $('#video-url-error').text("Invalid Video URL. Supported: YouTube, Vimeo, Facebook.").show();
@@ -874,7 +890,7 @@
             .done(function (res) {
                 if (res.success) {
                     window.Toast.fire({ icon: 'success', title: 'Video saved successfully' });
-                    loadVideos(productId); // Reload list to show new video
+                    loadVideos(productId);
                 } else {
                     window.Toast.fire({ icon: 'error', title: res.message });
                     btn.prop('disabled', false).html('<i class="fas fa-save me-1"></i> Save Video');
@@ -886,10 +902,9 @@
             });
     });
 
-    // D. Delete Video (Swal Version)
+    // D. Delete Video
     $(document).on('click', '.js-delete-video', function () {
         const videoId = $(this).data('video-id');
-        // Get ProductId from the open form to refresh the list later
         const productId = $('#form-add-video input[name="ProductId"]').val();
 
         Swal.fire({
@@ -903,7 +918,6 @@
         }).then((result) => {
             if (result.isConfirmed) {
                 Swal.showLoading();
-
                 $.ajax({
                     url: window.productConfig.urls.deleteVideo,
                     type: 'POST',
@@ -912,7 +926,7 @@
                     success: function (res) {
                         if (res.success) {
                             window.Toast.fire({ icon: 'success', title: 'Video deleted' });
-                            loadVideos(productId); // Refresh the list
+                            loadVideos(productId);
                         } else {
                             window.Toast.fire({ icon: 'error', title: res.message });
                         }
@@ -1083,7 +1097,7 @@
     $(document).on('click', '.js-prod-zoom-out', function () { if (cropper) cropper.zoom(-0.1); });
 
     // ============================================================
-    // 9. VARIANT IMAGE LOGIC (Cropper.js)
+    // 9. VARIANT IMAGE LOGIC (Cropper.js) - 🟢 WITH REAL-TIME UPDATE
     // ============================================================
 
     let varCropper;
@@ -1093,6 +1107,7 @@
         let $row = $(this).closest('tr');
         let variantId = $row.data('variant-id');
 
+        // Store variantId on the container
         $('#modal-var-images-content').data('variant-id', variantId);
         $('#modal-var-images-content').html('<div class="loading-spinner"></div>');
 
@@ -1137,11 +1152,16 @@
                 contentType: false,
                 success: function (res) {
                     if (res.success) {
+                        // A. Refresh Modal Content
                         $.get(urls.getVariantImages, { variantId: variantId }, function (html) {
                             $('#modal-var-images-content').html(html);
                             if (varCropper) { varCropper.destroy(); varCropper = null; }
                             $('#var-cropper-wrapper').hide();
                         });
+
+                        // B. 🟢 UPDATE REAL-TIME COUNT (Background Table)
+                        updateVariantImageCount(variantId, 1);
+
                     } else { alert("Upload failed"); }
                 },
                 complete: function () { $btn.prop('disabled', false).text('Save'); }
@@ -1169,10 +1189,14 @@
             headers: { 'RequestVerificationToken': token },
             data: { id: id },
             success: function () {
+                // A. Hide modal and refresh grid
                 $('#deleteVariantImageModal').modal('hide');
                 $.get(urls.getVariantImages, { variantId: variantId }, function (html) {
                     $('#modal-var-images-content').html(html);
                 });
+
+                // B. 🟢 UPDATE REAL-TIME COUNT (Background Table)
+                updateVariantImageCount(variantId, -1);
             },
             complete: function () { $btn.prop('disabled', false).text('Delete'); }
         });

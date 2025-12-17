@@ -10,10 +10,37 @@
             var button = event.relatedTarget;
             if (!button) return;
 
+            // 1. Standard Text Helper
             function setText(id, val) {
                 var el = document.getElementById(id);
                 if (el) {
                     el.textContent = val ? val : '';
+                }
+            }
+
+            // 2. ✅ NEW: UTC Date Helper (Converts UTC string to Local Time)
+            function setUtcText(id, utcVal) {
+                var el = document.getElementById(id);
+                if (el) {
+                    if (!utcVal) {
+                        el.textContent = '';
+                        return;
+                    }
+
+                    // Create Date object (Browser automatically handles Timezone)
+                    var date = new Date(utcVal);
+
+                    if (!isNaN(date.getTime())) {
+                        // Format: "Dec 17, 2025, 10:30 PM"
+                        el.textContent = date.toLocaleDateString(undefined, {
+                            day: 'numeric', month: 'short', year: 'numeric'
+                        }) + ", " + date.toLocaleTimeString(undefined, {
+                            hour: '2-digit', minute: '2-digit'
+                        });
+                    } else {
+                        // Fallback if parsing fails
+                        el.textContent = utcVal;
+                    }
                 }
             }
 
@@ -22,16 +49,18 @@
             setText('m-status', button.getAttribute('data-status'));
             setText('m-type', button.getAttribute('data-type'));
 
-            // ✅ CUSTOMER: ID + (Name)
+            // Customer Logic
             var custId = button.getAttribute('data-cust-id');
             var custName = button.getAttribute('data-cust-name');
+            var custPhone = button.getAttribute('data-cust-phone');
             var custDisplay = custId;
             if (custName && custName !== 'Unknown') {
                 custDisplay += ' (' + custName + ')';
             }
             setText('m-cust-id', custDisplay);
+            setText('m-cust-phone', custPhone);
 
-            // ✅ ADDRESS: ID + (Full Address)
+            // Address Logic
             var addrId = button.getAttribute('data-addr-id');
             var fullAddr = button.getAttribute('data-full-addr');
             var addrDisplay = addrId;
@@ -51,9 +80,19 @@
 
             // Audit
             setText('m-created-by', button.getAttribute('data-created-by'));
-            setText('m-created-at', button.getAttribute('data-created-at'));
             setText('m-updated-by', button.getAttribute('data-updated-by'));
-            setText('m-updated-at', button.getAttribute('data-updated-at'));
+
+            // ✅ USE THE NEW DATE HELPER HERE
+            setText(
+                'm-created-at',
+                formatUtcToLocal(button.getAttribute('data-created-at'))
+            );
+
+            setText(
+                'm-updated-at',
+                formatUtcToLocal(button.getAttribute('data-updated-at'))
+            );
+
 
             // Status Badge Logic
             var status = button.getAttribute('data-status');
@@ -72,3 +111,18 @@
         });
     }
 });
+function formatUtcToLocal(utcString) {
+    if (!utcString) return 'N/A';
+
+    const date = new Date(utcString);
+    if (isNaN(date)) return 'N/A';
+
+    return date.toLocaleString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+    });
+}

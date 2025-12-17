@@ -18,25 +18,27 @@ namespace MDUA.DataAccess
         /// </summary>
         public ProductVariantList GetProductVariantsByProductId(int productId)
         {
+            // 1. Modified SQL: Added a subquery to count VariantImage rows
             string SQLQuery = @"
-				SELECT 
-					v.Id,
-					v.ProductId,
-					v.VariantName,
-					v.SKU,
-					v.Barcode,
-					v.VariantPrice,
-					v.IsActive,
-					v.CreatedBy,
-					v.CreatedAt,
-					v.UpdatedBy,
-					v.UpdatedAt,
-					ISNULL(vps.StockQty, 0) AS StockQty,
-					ISNULL(vps.Price, 0) AS VPS_Price
-				FROM ProductVariant v
-				LEFT JOIN VariantPriceStock vps ON v.Id = vps.Id
-				WHERE v.ProductId = @ProductId
-				ORDER BY v.Id";
+        SELECT 
+            v.Id,
+            v.ProductId,
+            v.VariantName,
+            v.SKU,
+            v.Barcode,
+            v.VariantPrice,
+            v.IsActive,
+            v.CreatedBy,
+            v.CreatedAt,
+            v.UpdatedBy,
+            v.UpdatedAt,
+            ISNULL(vps.StockQty, 0) AS StockQty,
+            ISNULL(vps.Price, 0) AS VPS_Price,
+            (SELECT COUNT(1) FROM VariantImage vi WHERE vi.VariantId = v.Id) AS ImageCount
+        FROM ProductVariant v
+        LEFT JOIN VariantPriceStock vps ON v.Id = vps.Id
+        WHERE v.ProductId = @ProductId
+        ORDER BY v.Id";
 
             using SqlCommand cmd = GetSQLCommand(SQLQuery);
             AddParameter(cmd, pInt32("ProductId", productId));
@@ -62,9 +64,12 @@ namespace MDUA.DataAccess
                         CreatedAt = reader.IsDBNull(8) ? DateTime.UtcNow : reader.GetDateTime(8),
                         UpdatedBy = reader.IsDBNull(9) ? "" : reader.GetString(9),
                         UpdatedAt = reader.IsDBNull(10) ? (DateTime?)null : reader.GetDateTime(10),
-                        // stock and optional price from VariantPriceStock
-                        StockQty = reader.IsDBNull(11) ? 0 : reader.GetInt32(11)
-                        // If you want to map VPS_Price, add a property to ProductVariant or ignore it here
+                        StockQty = reader.IsDBNull(11) ? 0 : reader.GetInt32(11),
+
+                        // 2. Map the new column (Index 13 in SQL, because index starts at 0)
+                        // Index 12 is VPS_Price (which we skipped mapping in your original code), 
+                        // so ImageCount is at index 13.
+                        ImageCount = reader.IsDBNull(13) ? 0 : reader.GetInt32(13)
                     };
 
                     list.Add(variant);
