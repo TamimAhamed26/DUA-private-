@@ -42,60 +42,23 @@ namespace MDUA.Web.UI.Controllers
 
             if (loginResult.IsSuccess)
             {
-                // 3.  DB AUTH: Create User Session in SQL
-                // Get IP and User Agent for security tracking
-                string ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString();
-                string deviceInfo = Request.Headers["User-Agent"].ToString();
+                var user = loginResult.UserLogin;
 
-                // This writes to the UserSession table and returns a unique SessionKey (Guid)
-                Guid sessionKey = _userLoginFacade.CreateUserSession(loginResult.UserLogin.Id, ipAddress, deviceInfo);
-
-                // 4. Build Claims List
-                var claims = new List<Claim>
+                if (user.IsTwoFactorEnabled)
                 {
-                    new Claim(ClaimTypes.NameIdentifier, loginResult.UserLogin.Id.ToString()),
-                    new Claim(ClaimTypes.Name, loginResult.UserLogin.UserName),
-                    new Claim("CompanyId", loginResult.UserLogin.CompanyId.ToString()),
-                    
-                    // actual RoleName from DB
-                    new Claim(ClaimTypes.Role, !string.IsNullOrEmpty(loginResult.RoleName) ? loginResult.RoleName : "User"),
-
-                    //   Add the SessionKey to the cookie claims. 
-                    // This allows Program.cs to validate against the DB on every request.
-                    new Claim("SessionKey", sessionKey.ToString())
-                };
-
-                // 5. Add Permissions to Claims
-                if (loginResult.AuthorizedActions != null)
-                {
-                    foreach (var permission in loginResult.AuthorizedActions)
-                    {
-                        claims.Add(new Claim("Permission", permission));
-                    }
+                    TempData["PreAuthUserId"] = user.Id;
+                    TempData["RememberMe"] = rememberMe; // Carry over this setting
+                    TempData["ReturnUrl"] = returnUrl;   // Carry over this setting
+                    return RedirectToAction("VerifyTwoFactor");
                 }
 
-                // 6. Create Identity
-                var claimsIdentity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
-
-                // 7. Configure Cookie Properties
-                var authProperties = new AuthenticationProperties
-                {
-                    IsPersistent = rememberMe,
-                    ExpiresUtc = rememberMe ? DateTime.UtcNow.AddDays(30) : DateTime.UtcNow.AddMinutes(60),
-                    AllowRefresh = true
-                };
-
-                // 8. Sign In
-                await HttpContext.SignInAsync(
-                    CookieAuthenticationDefaults.AuthenticationScheme,
-                    new ClaimsPrincipal(claimsIdentity),
-                    authProperties);
+                // If No 2FA, proceed with your existing robust login logic
+                await CompleteSignInAsync(loginResult, rememberMe);
 
                 if (!string.IsNullOrEmpty(returnUrl) && Url.IsLocalUrl(returnUrl))
                 {
                     return Redirect(returnUrl);
                 }
-
                 return RedirectToAction("Dashboard", "Home");
             }
 
@@ -103,12 +66,109 @@ namespace MDUA.Web.UI.Controllers
             return View(loginResult);
         }
 
+        [HttpGet]
+        public IActionResult VerifyTwoFactor()
+        {
+            if (TempData.Peek("PreAuthUserId") == null) return RedirectToAction("LogIn");
+            return View();
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> VerifyTwoFactor(string code)
+        {
+            if (TempData["PreAuthUserId"] is not int userId) return RedirectToAction("LogIn");
+
+            // Fetch user to get the secret key
+            var result = _userLoginFacade.GetUserLoginById(userId);
+            if (!result.IsSuccess) return RedirectToAction("LogIn");
+
+            // Verify Code using your new Facade method
+            bool isValid = _userLoginFacade.VerifyTwoFactor(result.UserLogin.TwoFactorSecret, code);
+
+            if (isValid)
+            {
+                // Retrieve settings we saved
+                bool rememberMe = (bool)(TempData["RememberMe"] ?? false);
+                string returnUrl = TempData["ReturnUrl"] as string;
+
+                // ✅ COMPLETE SIGN IN (Uses your exact existing logic)
+                await CompleteSignInAsync(result, rememberMe);
+
+                // Cleanup
+                TempData.Remove("PreAuthUserId");
+                TempData.Remove("RememberMe");
+                TempData.Remove("ReturnUrl");
+
+                if (!string.IsNullOrEmpty(returnUrl) && Url.IsLocalUrl(returnUrl))
+                {
+                    return Redirect(returnUrl);
+                }
+                return RedirectToAction("Dashboard", "Home");
+            }
+
+            ModelState.AddModelError("", "Invalid authenticator code.");
+            TempData.Keep("PreAuthUserId");
+            TempData.Keep("RememberMe");
+            TempData.Keep("ReturnUrl");
+            return View();
+        }
+
+        private async Task CompleteSignInAsync(UserLoginResult loginResult, bool rememberMe)
+        {
+            // 3. DB AUTH: Create User Session in SQL
+            string ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString();
+            string deviceInfo = Request.Headers["User-Agent"].ToString();
+
+            // This writes to the UserSession table and returns a unique SessionKey (Guid)
+            Guid sessionKey = _userLoginFacade.CreateUserSession(loginResult.UserLogin.Id, ipAddress, deviceInfo);
+
+            // 4. Build Claims List
+            var claims = new List<Claim>
+            {
+                new Claim(ClaimTypes.NameIdentifier, loginResult.UserLogin.Id.ToString()),
+                new Claim(ClaimTypes.Name, loginResult.UserLogin.UserName),
+                new Claim("CompanyId", loginResult.UserLogin.CompanyId.ToString()),
+                
+                // actual RoleName from DB
+                new Claim(ClaimTypes.Role, !string.IsNullOrEmpty(loginResult.RoleName) ? loginResult.RoleName : "User"),
+
+                // Add the SessionKey to the cookie claims.
+                new Claim("SessionKey", sessionKey.ToString())
+            };
+
+            // 5. Add Permissions to Claims
+            if (loginResult.AuthorizedActions != null)
+            {
+                foreach (var permission in loginResult.AuthorizedActions)
+                {
+                    claims.Add(new Claim("Permission", permission));
+                }
+            }
+
+            // 6. Create Identity
+            var claimsIdentity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+
+            // 7. Configure Cookie Properties
+            var authProperties = new AuthenticationProperties
+            {
+                IsPersistent = rememberMe,
+                ExpiresUtc = rememberMe ? DateTime.UtcNow.AddDays(30) : DateTime.UtcNow.AddMinutes(60),
+                AllowRefresh = true
+            };
+
+            // 8. Sign In
+            await HttpContext.SignInAsync(
+                CookieAuthenticationDefaults.AuthenticationScheme,
+                new ClaimsPrincipal(claimsIdentity),
+                authProperties);
+        }
+
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Logout()
         {
-            // 1.  DB AUTH: Invalidate Session in SQL
-            // Before deleting the cookie, we grab the SessionKey and tell the DB this session is over.
+            // 1. DB AUTH: Invalidate Session in SQL
             var sessionClaim = User.FindFirst("SessionKey");
             if (sessionClaim != null && Guid.TryParse(sessionClaim.Value, out Guid key))
             {
@@ -117,7 +177,7 @@ namespace MDUA.Web.UI.Controllers
 
             // 2. Remove Cookie
             await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-            return RedirectToAction("Login", "Account");
+            return RedirectToAction("LogIn", "Account");
         }
 
         [HttpGet]

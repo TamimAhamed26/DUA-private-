@@ -2,7 +2,11 @@
 using MDUA.Facade.Interface;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using QRCoder;
 using System;
+using System.Drawing;
+using System.Drawing.Imaging;
+using System.IO;
 
 namespace MDUA.Web.UI.Controllers
 {
@@ -11,10 +15,13 @@ namespace MDUA.Web.UI.Controllers
     {
         private readonly ISettingsFacade _settingsFacade;
         private  readonly IPaymentFacade _paymentFacade;
-        public SettingsController(ISettingsFacade settingsFacade, IPaymentFacade paymentFacade)
+        private readonly IUserLoginFacade _userLoginFacade;
+        public SettingsController(ISettingsFacade settingsFacade, IPaymentFacade paymentFacade, IUserLoginFacade userLoginFacade)
         {
             _settingsFacade = settingsFacade;
             _paymentFacade = paymentFacade;
+            _userLoginFacade = userLoginFacade;
+
         }
 
         [HttpGet]
@@ -68,6 +75,51 @@ namespace MDUA.Web.UI.Controllers
             {
                 return Json(new { success = false, message = ex.Message });
             }
+        }
+
+        // ✅ NEW: Security Settings Page
+        [HttpGet]
+        public IActionResult Security()
+        {
+            // Check if user already has 2FA enabled
+            var result = _userLoginFacade.GetUserLoginById(CurrentUserId);
+            bool isEnabled = result.IsSuccess && result.UserLogin.IsTwoFactorEnabled;
+
+            if (isEnabled)
+            {
+                ViewBag.IsTwoFactorEnabled = true;
+                return View();
+            }
+
+            // Generate Setup Data
+            var setupData = _userLoginFacade.SetupTwoFactor(CurrentUserName);
+
+            // Generate QR Code
+            using (QRCodeGenerator qrGenerator = new QRCodeGenerator())
+            using (QRCodeData qrCodeData = qrGenerator.CreateQrCode(setupData.qrCodeUri, QRCodeGenerator.ECCLevel.Q))
+            using (PngByteQRCode qrCode = new PngByteQRCode(qrCodeData))
+            {
+                byte[] qrCodeBytes = qrCode.GetGraphic(20);
+                string base64Qr = Convert.ToBase64String(qrCodeBytes);
+                ViewBag.QrCodeImage = $"data:image/png;base64,{base64Qr}";
+                ViewBag.ManualEntryKey = setupData.secretKey;
+            }
+
+            return View();
+        }
+
+        // ✅ NEW: Enable 2FA Action
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public IActionResult EnableTwoFactor(string entryKey, string code)
+        {
+            bool success = _userLoginFacade.EnableTwoFactor(CurrentUserId, entryKey, code);
+
+            if (success)
+            {
+                return Json(new { success = true, message = "Two-Factor Authentication Enabled Successfully!" });
+            }
+            return Json(new { success = false, message = "Invalid Code. Please try again." });
         }
     }
 }

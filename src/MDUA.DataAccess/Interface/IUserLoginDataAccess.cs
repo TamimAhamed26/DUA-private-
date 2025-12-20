@@ -32,5 +32,7 @@ namespace MDUA.DataAccess.Interface
 	public interface IUserLoginDataAccess : ICommonDataAccess<UserLogin, UserLoginList, UserLoginBase>
     {
         public UserLogin GetUserLogin(string email, string password);
+
+        void EnableTwoFactor(int userId, string secret); 
     }	
 }

@@ -10,6 +10,7 @@ using System.Text;
 using System.Threading.Tasks;
 using MDUA.Entities.Bases;
 using MDUA.DataAccess;
+using OtpNet;
 
 namespace MDUA.Facade
 {
@@ -326,6 +327,53 @@ namespace MDUA.Facade
 
         #endregion
 
+        #region Two Factor Authentication (OATH / TOTP)
 
+        public (string secretKey, string qrCodeUri) SetupTwoFactor(string username)
+        {
+            var key = KeyGeneration.GenerateRandomKey(20);
+            string base32Secret = Base32Encoding.ToString(key);
+
+            string issuer = "MDUA Admin";
+            string label = $"{issuer}:{username}";
+
+            string uri = $"otpauth://totp/{Uri.EscapeDataString(label)}?secret={base32Secret}&issuer={Uri.EscapeDataString(issuer)}";
+
+            return (base32Secret, uri);
+        }
+        public bool EnableTwoFactor(int userId, string secret, string codeInput)
+        {
+            if (string.IsNullOrWhiteSpace(secret) || string.IsNullOrWhiteSpace(codeInput)) return false;
+
+            var bytes = Base32Encoding.ToBytes(secret);
+            var totp = new Totp(bytes);
+
+            // Verify with 30-second window
+            if (totp.VerifyTotp(codeInput, out long timeStepMatched))
+            {
+                // Valid code -> Save secret to DB and enable 2FA
+                _UserLoginDataAccess.EnableTwoFactor(userId, secret);
+                return true;
+            }
+            return false;
+        }
+
+        public bool VerifyTwoFactor(string dbSecret, string codeInput)
+        {
+            if (string.IsNullOrEmpty(dbSecret) || string.IsNullOrEmpty(codeInput)) return false;
+
+            try
+            {
+                var bytes = Base32Encoding.ToBytes(dbSecret);
+                var totp = new Totp(bytes);
+                return totp.VerifyTotp(codeInput, out _);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        #endregion
     }
 }

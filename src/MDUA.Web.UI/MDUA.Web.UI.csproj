@@ -15,6 +15,10 @@
 </Target>
 
   <ItemGroup>
+    <PackageReference Include="QRCoder" Version="1.7.0" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\MDUA.Facade\MDUA.Facade.csproj" />
   </ItemGroup>
 

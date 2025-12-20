@@ -20,5 +20,10 @@ namespace MDUA.Facade.Interface
         Guid CreateUserSession(int userId, string ipAddress, string deviceInfo);
         bool IsSessionValid(Guid sessionKey);
         void InvalidateSession(Guid sessionKey);
+
+        (string secretKey, string qrCodeUri) SetupTwoFactor(string username);
+        bool EnableTwoFactor(int userId, string secret, string codeInput);
+        bool VerifyTwoFactor(string dbSecret, string codeInput);
+
     }
 }

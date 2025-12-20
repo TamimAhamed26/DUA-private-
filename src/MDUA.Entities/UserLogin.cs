@@ -10,7 +10,9 @@ namespace MDUA.Entities
 {
     public partial class UserLogin
     {
+        public bool IsTwoFactorEnabled { get; set; }
 
+        public string TwoFactorSecret { get; set; }
     }
 
     public class UserLoginResult
