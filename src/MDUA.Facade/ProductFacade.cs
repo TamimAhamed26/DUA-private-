@@ -902,16 +902,14 @@ namespace MDUA.Facade
                                           .OrderBy(v => v.SortOrder)
                                           .ToList();
         }
-        // 1. Update the AddProductVideo method
-        public long AddProductVideo(ProductVideo video, string username)
+        public async Task<long> AddProductVideo(ProductVideo video, string username)
         {
             // A. Validate generic requirements
             if (video == null) throw new ArgumentNullException(nameof(video));
             if (string.IsNullOrWhiteSpace(video.VideoUrl)) throw new ArgumentException("Video URL is required.");
 
             // B. SERVER-SIDE VALIDATION & CONVERSION
-            // This ensures only valid YouTube, Vimeo, or Facebook links are saved.
-            string embedUrl = ConvertToEmbedUrl(video.VideoUrl);
+            string embedUrl = await ConvertToEmbedUrl(video.VideoUrl);
 
             // If the conversion returned null/empty, it means the URL was invalid.
             if (string.IsNullOrEmpty(embedUrl))
@@ -957,21 +955,19 @@ namespace MDUA.Facade
 
             return _productVideoDataAccess.Insert(video);
         }
-
-        // 2. Update the Helper Method
-        public string ConvertToEmbedUrl(string url)
+        public async Task<string> ConvertToEmbedUrl(string url)
         {
             if (string.IsNullOrEmpty(url)) return null;
 
             // 1. Resolve Redirects (Share links) - CRITICAL for loading content
             if (url.Contains("facebook.com/share/") || url.Contains("fb.watch"))
             {
-                string resolvedUrl = ResolveRedirect(url);
+                // Now awaiting the async method
+                string resolvedUrl = await ResolveRedirect(url);
                 if (!string.IsNullOrEmpty(resolvedUrl)) url = resolvedUrl;
             }
 
             // 2. Already Embedded Check
-            // If we don't do this, a valid Facebook plugin link gets encoded again and breaks.
             if (url.Contains("facebook.com/plugins/video.php") ||
                 url.Contains("player.vimeo.com/video/") ||
                 url.Contains("youtube.com/embed/"))
@@ -1002,19 +998,22 @@ namespace MDUA.Facade
 
             return null;
         }
-        private string ResolveRedirect(string url)
+
+        private async Task<string> ResolveRedirect(string url)
         {
             try
             {
-                // Simple HEAD request to follow redirects
-                var request = (HttpWebRequest)WebRequest.Create(url);
-                request.Method = "HEAD";
-                request.AllowAutoRedirect = true;
-                request.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)";
-
-                using (var response = (HttpWebResponse)request.GetResponse())
+                using (var handler = new HttpClientHandler { AllowAutoRedirect = true })
+                using (var client = new HttpClient(handler))
                 {
-                    return response.ResponseUri.AbsoluteUri;
+                    client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+
+                    var request = new HttpRequestMessage(HttpMethod.Head, url);
+
+                    var response = await client.SendAsync(request);
+
+                    // will contain the final URI after the redirect chain.
+                    return response.RequestMessage?.RequestUri?.AbsoluteUri ?? url;
                 }
             }
             catch
@@ -1086,11 +1085,9 @@ namespace MDUA.Facade
         }
         public List<LowStockItem> GetLowStockVariants(int topN)
         {
-            // _variantPriceStockDataAccess is already injected in your constructor
             return _variantPriceStockDataAccess.GetLowStockVariants(topN);
         }
 
-        // ...
       
     }
 }
