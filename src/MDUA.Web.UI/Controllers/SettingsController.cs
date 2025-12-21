@@ -1,5 +1,7 @@
 ﻿using MDUA.Facade;
 using MDUA.Facade.Interface;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using QRCoder;
@@ -14,7 +16,7 @@ namespace MDUA.Web.UI.Controllers
     public class SettingsController : BaseController
     {
         private readonly ISettingsFacade _settingsFacade;
-        private  readonly IPaymentFacade _paymentFacade;
+        private readonly IPaymentFacade _paymentFacade;
         private readonly IUserLoginFacade _userLoginFacade;
         public SettingsController(ISettingsFacade settingsFacade, IPaymentFacade paymentFacade, IUserLoginFacade userLoginFacade)
         {
@@ -60,7 +62,7 @@ namespace MDUA.Web.UI.Controllers
             }
         }
 
-      
+
 
         [HttpPost]
         [ValidateAntiForgeryToken]
@@ -79,47 +81,45 @@ namespace MDUA.Web.UI.Controllers
 
         // ✅ NEW: Security Settings Page
         [HttpGet]
+        // No changes needed here, but ensure this is your code:
+        [HttpGet]
         public IActionResult Security()
         {
-            // Check if user already has 2FA enabled
-            var result = _userLoginFacade.GetUserLoginById(CurrentUserId);
-            bool isEnabled = result.IsSuccess && result.UserLogin.IsTwoFactorEnabled;
+            var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier);
+            if (userIdClaim == null) return RedirectToAction("LogIn", "Account");
 
-            if (isEnabled)
+            int userId = int.Parse(userIdClaim.Value);
+
+            // Now this returns the User with IsTwoFactorEnabled = true
+            var userResult = _userLoginFacade.GetUserLoginById(userId);
+
+            // This will now be TRUE
+            ViewBag.IsTwoFactorEnabled = userResult.UserLogin.IsTwoFactorEnabled;
+
+            // The QR code logic will be skipped if enabled
+            if (!userResult.UserLogin.IsTwoFactorEnabled)
             {
-                ViewBag.IsTwoFactorEnabled = true;
-                return View();
-            }
-
-            // Generate Setup Data
-            var setupData = _userLoginFacade.SetupTwoFactor(CurrentUserName);
-
-            // Generate QR Code
-            using (QRCodeGenerator qrGenerator = new QRCodeGenerator())
-            using (QRCodeData qrCodeData = qrGenerator.CreateQrCode(setupData.qrCodeUri, QRCodeGenerator.ECCLevel.Q))
-            using (PngByteQRCode qrCode = new PngByteQRCode(qrCodeData))
-            {
-                byte[] qrCodeBytes = qrCode.GetGraphic(20);
-                string base64Qr = Convert.ToBase64String(qrCodeBytes);
-                ViewBag.QrCodeImage = $"data:image/png;base64,{base64Qr}";
-                ViewBag.ManualEntryKey = setupData.secretKey;
+                var setupInfo = _userLoginFacade.SetupTwoFactor(userResult.UserLogin.UserName);
+                ViewBag.ManualEntryKey = setupInfo.secretKey;
+                ViewBag.QrCodeImage = $"https://api.qrserver.com/v1/create-qr-code/?size=200x200&data={Uri.EscapeDataString(setupInfo.qrCodeUri)}";
             }
 
             return View();
         }
-
         // ✅ NEW: Enable 2FA Action
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public IActionResult EnableTwoFactor(string entryKey, string code)
+        public async Task<IActionResult> EnableTwoFactor(string entryKey, string code)
         {
             bool success = _userLoginFacade.EnableTwoFactor(CurrentUserId, entryKey, code);
 
             if (success)
             {
-                return Json(new { success = true, message = "Two-Factor Authentication Enabled Successfully!" });
+                await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+                return Json(new { success = true, message = "2FA Enabled. Please log in again." });
             }
             return Json(new { success = false, message = "Invalid Code. Please try again." });
         }
+
     }
 }

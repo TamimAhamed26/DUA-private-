@@ -2,6 +2,7 @@
 using MDUA.Facade.Interface;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 
@@ -43,6 +44,7 @@ namespace MDUA.Web.UI.Controllers
             if (loginResult.IsSuccess)
             {
                 var user = loginResult.UserLogin;
+                Console.WriteLine($"2FA: {user.IsTwoFactorEnabled}, secret null? {string.IsNullOrEmpty(user.TwoFactorSecret)}");
 
                 if (user.IsTwoFactorEnabled)
                 {
@@ -73,37 +75,62 @@ namespace MDUA.Web.UI.Controllers
             return View();
         }
 
+        public class VerifyTwoFactorVm
+        {
+            public string Code { get; set; }
+        }
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> VerifyTwoFactor(string code)
+        [Authorize]   
+        public IActionResult DisableTwoFactor()
+        {
+            try
+            {
+                // 1. Get Logged in User ID
+                var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier);
+                if (userIdClaim == null || !int.TryParse(userIdClaim.Value, out int userId))
+                {
+                    return Json(new { success = false, message = "User session invalid." });
+                }
+
+                // 2. Call Facade to update DB
+                _userLoginFacade.DisableTwoFactor(userId);
+
+                // 3. Return Success
+                return Json(new { success = true, message = "Two-Factor Authentication has been disabled." });
+            }
+            catch (Exception ex)
+            {
+                // Log error here
+                return Json(new { success = false, message = "An error occurred." });
+            }
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> VerifyTwoFactor(VerifyTwoFactorVm model)
         {
             if (TempData["PreAuthUserId"] is not int userId) return RedirectToAction("LogIn");
 
-            // Fetch user to get the secret key
             var result = _userLoginFacade.GetUserLoginById(userId);
             if (!result.IsSuccess) return RedirectToAction("LogIn");
 
-            // Verify Code using your new Facade method
-            bool isValid = _userLoginFacade.VerifyTwoFactor(result.UserLogin.TwoFactorSecret, code);
+            Console.WriteLine($"[2FA-POST] Code null? {model?.Code == null}, len={(model?.Code?.Length ?? 0)}, raw='{model?.Code}'");
+
+            bool isValid = _userLoginFacade.VerifyTwoFactorByUserId(userId, model.Code);
 
             if (isValid)
             {
-                // Retrieve settings we saved
                 bool rememberMe = (bool)(TempData["RememberMe"] ?? false);
                 string returnUrl = TempData["ReturnUrl"] as string;
 
-                // ✅ COMPLETE SIGN IN (Uses your exact existing logic)
                 await CompleteSignInAsync(result, rememberMe);
 
-                // Cleanup
                 TempData.Remove("PreAuthUserId");
                 TempData.Remove("RememberMe");
                 TempData.Remove("ReturnUrl");
 
-                if (!string.IsNullOrEmpty(returnUrl) && Url.IsLocalUrl(returnUrl))
-                {
-                    return Redirect(returnUrl);
-                }
+                if (!string.IsNullOrEmpty(returnUrl) && Url.IsLocalUrl(returnUrl)) return Redirect(returnUrl);
                 return RedirectToAction("Dashboard", "Home");
             }
 
@@ -111,8 +138,11 @@ namespace MDUA.Web.UI.Controllers
             TempData.Keep("PreAuthUserId");
             TempData.Keep("RememberMe");
             TempData.Keep("ReturnUrl");
-            return View();
+            return View(model);
         }
+
+
+
 
         private async Task CompleteSignInAsync(UserLoginResult loginResult, bool rememberMe)
         {
