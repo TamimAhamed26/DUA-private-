@@ -13,6 +13,7 @@ namespace MDUA.DataAccess.Interface
 
         ChatSession CreateOrGetSession(ChatSession session);
 
+        void UpdateSession(ChatSession session);
 
         /// Retrieves a specific session by its GUID (useful for guests).
 
@@ -41,5 +42,6 @@ namespace MDUA.DataAccess.Interface
         /// Marks all messages in a session as read for a specific recipient type (Admin or Customer).
     
         void MarkMessagesAsRead(int sessionId, bool messagesFromAdmin);
+        ChatSession GetSessionById(int sessionId);
     }
 }

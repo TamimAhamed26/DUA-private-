@@ -21,7 +21,8 @@ namespace MDUA.Entities.Bases
 			MessageText = 4,
 			IsFromAdmin = 5,
 			IsRead = 6,
-			SentAt = 7
+			SentAt = 7,
+			SenderType = 8
 		}
 		#endregion
 	
@@ -34,6 +35,7 @@ namespace MDUA.Entities.Bases
 		public const string Property_IsFromAdmin = "IsFromAdmin";		            
 		public const string Property_IsRead = "IsRead";		            
 		public const string Property_SentAt = "SentAt";		            
+		public const string Property_SenderType = "SenderType";		            
 		#endregion
 		
 		#region Private Data Types
@@ -45,6 +47,7 @@ namespace MDUA.Entities.Bases
 		private Boolean _IsFromAdmin;	            
 		private Boolean _IsRead;	            
 		private DateTime _SentAt;	            
+		private String _SenderType;	            
 		#endregion
 		
 		#region Properties		
@@ -168,6 +171,21 @@ namespace MDUA.Entities.Bases
 			}
         }
 
+		[DataMember]
+		public String SenderType
+		{	
+			get{ return _SenderType; }			
+			set
+			{
+				PropertyChangingEventArgs args = new PropertyChangingEventArgs(Property_SenderType, value, _SenderType);
+				if (PropertyChanging(args))
+				{
+					_SenderType = value;
+					PropertyChanged(args);					
+				}	
+			}
+        }
+
 		#endregion
 		
 		#region Cloning Base Objects
@@ -183,6 +201,7 @@ namespace MDUA.Entities.Bases
 			newObj.IsFromAdmin = this.IsFromAdmin;						
 			newObj.IsRead = this.IsRead;						
 			newObj.SentAt = this.SentAt;						
+			newObj.SenderType = this.SenderType;						
 			
 			return newObj;
 		}
@@ -200,6 +219,7 @@ namespace MDUA.Entities.Bases
 			info.AddValue(ChatMessageBase.Property_IsFromAdmin, IsFromAdmin);				
 			info.AddValue(ChatMessageBase.Property_IsRead, IsRead);				
 			info.AddValue(ChatMessageBase.Property_SentAt, SentAt);				
+			info.AddValue(ChatMessageBase.Property_SenderType, SenderType);				
 		}
 		#endregion
 

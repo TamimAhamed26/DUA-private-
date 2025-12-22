@@ -1,0 +1,893 @@
+using MDUA.Entities;
+using MDUA.Entities.Bases;
+using MDUA.Entities.List;
+using MDUA.Framework;
+using MDUA.Framework.Exceptions;
+using System;
+using System.Data;
+using System.Data.SqlClient;
+using System.Reflection.PortableExecutable;
+
+namespace MDUA.DataAccess
+{
+	public partial class VariantPriceStockDataAccess
+	{
+        public int Insert(VariantPriceStock vps)
+        {
+            using SqlCommand cmd = GetSPCommand("InsertVariantPriceStock");
+
+            // Add all parameters from the entity
+            // Note: The @Id is an INPUT, not an OUTPUT
+            AddParameter(cmd, pInt32("Id", vps.Id));
+            AddParameter(cmd, pDecimal("Price", vps.Price));
+            AddParameter(cmd, pDecimal("CompareAtPrice", vps.CompareAtPrice));
+            AddParameter(cmd, pDecimal("CostPrice", vps.CostPrice));
+            AddParameter(cmd, pInt32("StockQty", vps.StockQty));
+            AddParameter(cmd, pBool("TrackInventory", vps.TrackInventory));
+            AddParameter(cmd, pBool("AllowBackorder", vps.AllowBackorder));
+            AddParameter(cmd, pInt32("WeightGrams", vps.WeightGrams));
+
+            long result = InsertRecord(cmd);
+
+            return (int)result; 
+        }
+
+        public long UpdatePrice(int variantId, decimal price, string sku)
+        {
+            // We update SKU in ProductVariant and Price in BOTH tables
+            string SQLQuery = @"
+        UPDATE ProductVariant 
+        SET VariantPrice = @Price, SKU = @SKU, UpdatedAt = GETDATE() 
+        WHERE Id = @Id;
+
+        UPDATE VariantPriceStock 
+        SET Price = @Price 
+        WHERE Id = @Id;
+        
+        SELECT 1;";
+
+            using (SqlCommand cmd = GetSQLCommand(SQLQuery))
+            {
+                AddParameter(cmd, pInt32("Id", variantId));
+                AddParameter(cmd, pDecimal("Price", price));
+                AddParameter(cmd, pNVarChar("SKU", 50, sku)); // Add SKU Parameter
+
+                SqlDataReader reader;
+                long result = SelectRecords(cmd, out reader);
+
+                if (reader != null)
+                {
+                    reader.Close();
+                    reader.Dispose();
+                }
+
+                return 1;
+            }
+        }
+
+        public void AddStock(int variantId, int qty, SqlTransaction transaction)
+        {
+            // Simply adds to existing stock
+            string SQL = @"UPDATE VariantPriceStock SET StockQty = StockQty + @Qty WHERE Id = @Id";
+            using (SqlCommand cmd = new SqlCommand(SQL, transaction.Connection, transaction))
+            {
+                cmd.Parameters.AddWithValue("@Id", variantId);
+                cmd.Parameters.AddWithValue("@Qty", qty);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        // Helper to find ProductId from Variant (for InventoryTransaction)
+        public int GetProductIdByVariant(int variantId)
+        {
+            string SQL = "SELECT ProductId FROM ProductVariant WHERE Id = @Id";
+            using (SqlCommand cmd = GetSQLCommand(SQL))
+            {
+                AddParameter(cmd, pInt32("Id", variantId));
+                if (cmd.Connection.State != System.Data.ConnectionState.Open) cmd.Connection.Open();
+                var result = cmd.ExecuteScalar();
+                cmd.Connection.Close();
+                return result != null ? Convert.ToInt32(result) : 0;
+            }
+        }
+
+        public List<LowStockItem> GetLowStockVariants(int topN = 5)
+        {
+            var list = new List<LowStockItem>();
+
+            // ✅ FIX 1: Added 'vps.Id' to the SELECT list
+            string sql = $@"
+        SELECT TOP (@TopN)
+            vps.Id, 
+            p.ProductName,
+            pv.VariantName,
+            vps.StockQty,
+            vps.Price
+        FROM [dbo].[VariantPriceStock] vps
+        INNER JOIN [dbo].[ProductVariant] pv ON vps.Id = pv.Id
+        INNER JOIN [dbo].[Product] p ON pv.ProductId = p.Id
+        WHERE p.IsActive = 1 AND pv.IsActive = 1
+        ORDER BY vps.StockQty ASC, p.ProductName ASC";
+
+            using (SqlCommand cmd = GetSQLCommand(sql))
+            {
+                AddParameter(cmd, pInt32("TopN", topN));
+
+                SqlDataReader reader;
+                SelectRecords(cmd, out reader);
+
+                using (reader)
+                {
+                    while (reader.Read())
+                    {
+                        list.Add(new LowStockItem
+                        {
+                            // ✅ FIX 2: Map the Id to VariantId
+                            VariantId = Convert.ToInt32(reader["Id"]),
+                            ProductName = reader["ProductName"].ToString(),
+                            VariantName = reader["VariantName"] != DBNull.Value ? reader["VariantName"].ToString() : "",
+                            StockQty = Convert.ToInt32(reader["StockQty"]),
+                            Price = Convert.ToDecimal(reader["Price"])
+                        });
+                    }
+                }
+            }
+            return list;
+        }
+    }	
+}
+
+using MDUA.Entities;
+using MDUA.Entities.List;
+using System;
+using System.Data.SqlClient;
+
+namespace MDUA.DataAccess
+{
+    public partial class ProductDataAccess
+    {
+
+        public Product GetBySlug(string _Slug)
+        {
+            string SQLQuery = @"
+        SELECT * 
+        FROM Product 
+        WHERE Slug = @Slug 
+          AND IsActive = 1";
+
+            using SqlCommand cmd = GetSQLCommand(SQLQuery);
+            AddParameter(cmd, pNVarChar("Slug", 400, _Slug));
+
+            return GetObject(cmd);
+        }
+
+
+        public Product GetProductById(Int32 _Id)
+        {
+            string SQLQuery = @"
+        SELECT 
+            p.Id,
+            p.CompanyId,
+            p.ProductName,
+            p.ReorderLevel,
+            p.Barcode,
+            p.CategoryId,
+            p.Description,
+            p.Slug,
+            p.BasePrice,
+            p.IsVariantBased,
+            p.IsActive,
+            p.CreatedBy,
+            p.CreatedAt,
+            p.UpdatedBy,
+            p.UpdatedAt,
+            c.CompanyName,
+            ISNULL(SUM(vps.StockQty), 0) AS TotalStockQuantity
+        FROM 
+            Product p
+        LEFT JOIN 
+            Company c ON p.CompanyId = c.Id
+        LEFT JOIN 
+            ProductVariant pv ON pv.ProductId = p.Id
+        LEFT JOIN 
+            VariantPriceStock vps ON vps.Id = pv.Id
+        WHERE 
+            p.Id = @Id
+        GROUP BY 
+            p.Id, p.CompanyId, p.ProductName, p.ReorderLevel, p.Barcode, 
+            p.CategoryId, p.Description, p.Slug, p.BasePrice, p.IsVariantBased, 
+            p.IsActive, p.CreatedBy, p.CreatedAt, p.UpdatedBy, p.UpdatedAt, c.CompanyName;
+    ";
+
+            using SqlCommand cmd = GetSQLCommand(SQLQuery);
+            AddParameter(cmd, pInt32("Id", _Id));
+
+            // 1. Get the object as usual (Dates will come as 'Unspecified')
+            Product product = GetObject(cmd);
+
+            // 2. ✅ FIX: Manually force the DateTimeKind to UTC
+            // This tells .NET: "These dates are definitely UTC, not local."
+            if (product != null)
+            {
+                if (product.CreatedAt.HasValue)
+                    product.CreatedAt = DateTime.SpecifyKind(product.CreatedAt.Value, DateTimeKind.Utc);
+
+                if (product.UpdatedAt.HasValue)
+                    product.UpdatedAt = DateTime.SpecifyKind(product.UpdatedAt.Value, DateTimeKind.Utc);
+            }
+
+            return product;
+        }
+        public ProductList GetLastFiveProducts()
+        {
+            string SQLQuery = @"
+        SELECT TOP 5
+            Id,
+            CompanyId,
+            ProductName,
+            ReorderLevel,
+            Barcode,
+            CategoryId,
+            Description,
+            Slug,
+            BasePrice,
+            IsVariantBased,
+            IsActive,
+            CreatedBy,
+            CreatedAt,
+            UpdatedBy,
+            UpdatedAt
+        FROM Product
+        WHERE IsActive = 1
+        ORDER BY CreatedAt DESC";
+
+            using SqlCommand cmd = GetSQLCommand(SQLQuery);
+
+            return GetList(cmd, 5);
+        }
+
+        public bool? ToggleStatus(int productId)
+        {
+            // --- QUERY 1: UPDATE the product ---
+            string SQLQueryUpdate = @"
+        UPDATE Product
+        SET IsActive = CASE WHEN IsActive = 1 THEN 0 ELSE 1 END
+        WHERE Id = @Id;";
+
+            using (SqlCommand cmdUpdate = GetSQLCommand(SQLQueryUpdate))
+            {
+                AddParameter(cmdUpdate, pInt32("Id", productId));
+
+                // ✅ Use the SelectRecords pattern to execute the UPDATE
+                // This matches the pattern in your InsertVariantAttributeValue method
+                SqlDataReader readerUpdate;
+                SelectRecords(cmdUpdate, out readerUpdate);
+
+                // We must close this reader immediately
+                readerUpdate.Close();
+                readerUpdate.Dispose();
+            }
+
+            // --- QUERY 2: SELECT the new status ---
+            string SQLQuerySelect = @"
+        SELECT IsActive 
+        FROM Product
+        WHERE Id = @Id;";
+
+            bool? newStatus = null;
+            using (SqlCommand cmdSelect = GetSQLCommand(SQLQuerySelect))
+            {
+                AddParameter(cmdSelect, pInt32("Id", productId));
+
+                // Now we use the same SelectRecords pattern for the SELECT
+                SqlDataReader readerSelect;
+                SelectRecords(cmdSelect, out readerSelect);
+
+                using (readerSelect)
+                {
+                    if (readerSelect.Read())
+                    {
+                        if (readerSelect[0] != null && readerSelect[0] != DBNull.Value)
+                        {
+                            newStatus = (bool)readerSelect[0];
+                        }
+                    }
+                    readerSelect.Close();
+                }
+            }
+
+            // This will return the new status, or null if the product wasn't found
+            return newStatus;
+        }
+
+        // 1. GET FULL LIST
+        public ProductList GetAllProductsWithCategory()
+        {
+            string SQLQuery = @"
+                SELECT TOP 100 
+                    p.Id, p.CompanyId, p.ProductName, p.ReorderLevel, p.Barcode,
+                    p.CategoryId, p.Description, p.Slug, p.BasePrice, p.IsVariantBased,
+                    p.IsActive, p.CreatedBy, p.CreatedAt, p.UpdatedBy, p.UpdatedAt,
+                    NULL as DummyForBase, -- Index 15: Buffer for FillBaseObject
+                    ISNULL(c.Name, '') as CategoryName -- Index 16: Actual Data
+                FROM Product p
+                LEFT JOIN ProductCategory c ON p.CategoryId = c.Id
+                ORDER BY p.CreatedAt DESC";
+
+            using SqlCommand cmd = GetSQLCommand(SQLQuery);
+            return GetListWithCategory(cmd);
+        }
+        private ProductList GetListWithCategory(SqlCommand cmd)
+        {
+            ProductList list = new ProductList();
+            SqlDataReader reader;
+
+            SelectRecords(cmd, out reader);
+
+            using (reader)
+            {
+                while (reader.Read())
+                {
+                    Product product = new Product();
+
+                    // 1. Fill standard properties (Indices 0-14, and potentially 15 via Base)
+                    FillObject(product, reader);
+
+                    // 2. Explicitly read Index 16 for CategoryName
+                    if (reader.FieldCount > 16 && !reader.IsDBNull(16))
+                    {
+                        product.CategoryName = reader.GetString(16);
+                    }
+                    else
+                    {
+                        // Use empty string so Facade can set "N/A" if needed
+                        // or leave as is if you want it blank
+                        product.CategoryName = "";
+                    }
+
+                    list.Add(product);
+                }
+                reader.Close();
+            }
+            return list;
+        }
+        // 2. SEARCH PRODUCTS
+        public ProductList SearchProducts(string searchTerm)
+        {
+            string SQLQuery = @"
+                SELECT TOP 50
+                    p.Id, p.CompanyId, p.ProductName, p.ReorderLevel, p.Barcode,
+                    p.CategoryId, p.Description, p.Slug, p.BasePrice, p.IsVariantBased,
+                    p.IsActive, p.CreatedBy, p.CreatedAt, p.UpdatedBy, p.UpdatedAt,
+                    NULL as DummyForBase, -- Index 15: Buffer
+                    ISNULL(c.Name, '') as CategoryName -- Index 16: Data
+                FROM Product p
+                LEFT JOIN ProductCategory c ON p.CategoryId = c.Id
+                WHERE p.IsActive = 1 
+                  AND p.ProductName LIKE @Search
+                ORDER BY p.ProductName ASC";
+
+            using SqlCommand cmd = GetSQLCommand(SQLQuery);
+            AddParameter(cmd, pNVarChar("Search", 400, $"%{searchTerm}%"));
+
+            return GetListWithCategory(cmd);
+        }
+    }
+}
+using System;
+using System.Data.SqlClient;
+using MDUA.Entities;
+using MDUA.Entities.Bases;
+
+using MDUA.Entities.List;
+
+namespace MDUA.DataAccess
+{
+    public partial class ProductDiscountDataAccess
+    {
+        public ProductDiscountList GetProductDiscountsByProductId(int productId)
+        {
+            string SQLQuery = @"
+                SELECT
+                    Id,
+                    ProductId,
+                    DiscountType,
+                    DiscountValue,
+                    MinQuantity,
+                    EffectiveFrom,
+                    EffectiveTo,
+                    IsActive,
+                    CreatedBy,
+                    CreatedAt,
+                    UpdatedBy,
+                    UpdatedAt
+                FROM ProductDiscount
+                WHERE ProductId = @ProductId
+                ORDER BY EffectiveFrom DESC";
+
+            using SqlCommand cmd = GetSQLCommand(SQLQuery);
+            AddParameter(cmd, pInt32("ProductId", productId));
+            return GetList(cmd, ALL_AVAILABLE_RECORDS);
+        }
+
+        public ProductDiscount GetActiveDiscount(int productId)
+        {
+            string SQLQuery = @"
+                SELECT TOP 1
+                    Id,
+                    ProductId,
+                    DiscountType,
+                    DiscountValue,
+                    MinQuantity,
+                    EffectiveFrom,
+                    EffectiveTo,
+                    IsActive,
+                    CreatedBy,
+                    CreatedAt,
+                    UpdatedBy,
+                    UpdatedAt
+                FROM ProductDiscount
+                WHERE ProductId = @ProductId
+                  AND IsActive = 1
+                  AND EffectiveFrom <= SYSUTCDATETIME()
+                  AND (EffectiveTo IS NULL OR EffectiveTo >= SYSUTCDATETIME())
+                ORDER BY EffectiveFrom DESC";
+
+            using SqlCommand cmd = GetSQLCommand(SQLQuery);
+            AddParameter(cmd, pInt32("ProductId", productId));
+            return GetObject(cmd);
+        }
+    }
+}
+using MDUA.DataAccess.Interface;
+using MDUA.Entities;
+using MDUA.Entities.Bases;
+using MDUA.Entities.List;
+using MDUA.Framework.DataAccess;
+using System;
+using System.Collections.Generic;
+using System.Data;
+using System.Data.SqlClient;
+
+namespace MDUA.DataAccess
+{
+    public partial class ProductVariantDataAccess : BaseDataAccess, IProductVariantDataAccess
+        {
+        /// <summary>
+        /// Inline SQL fallback for GetProductVariantsByProductId
+        /// Joins VariantPriceStock (vps) on v.Id = vps.Id to get stock (StockQty) and price if needed.
+        /// </summary>
+        public ProductVariantList GetProductVariantsByProductId(int productId)
+        {
+            // 1. Modified SQL: Added a subquery to count VariantImage rows
+            string SQLQuery = @"
+        SELECT 
+            v.Id,
+            v.ProductId,
+            v.VariantName,
+            v.SKU,
+            v.Barcode,
+            v.VariantPrice,
+            v.IsActive,
+            v.CreatedBy,
+            v.CreatedAt,
+            v.UpdatedBy,
+            v.UpdatedAt,
+            ISNULL(vps.StockQty, 0) AS StockQty,
+            ISNULL(vps.Price, 0) AS VPS_Price,
+            (SELECT COUNT(1) FROM VariantImage vi WHERE vi.VariantId = v.Id) AS ImageCount
+        FROM ProductVariant v
+        LEFT JOIN VariantPriceStock vps ON v.Id = vps.Id
+        WHERE v.ProductId = @ProductId
+        ORDER BY v.Id";
+
+            using SqlCommand cmd = GetSQLCommand(SQLQuery);
+            AddParameter(cmd, pInt32("ProductId", productId));
+
+            SqlDataReader reader;
+            long result = SelectRecords(cmd, out reader);
+            ProductVariantList list = new ProductVariantList();
+
+            using (reader)
+            {
+                while (reader.Read())
+                {
+                    var variant = new ProductVariant
+                    {
+                        Id = reader.GetInt32(0),
+                        ProductId = reader.GetInt32(1),
+                        VariantName = reader.IsDBNull(2) ? "" : reader.GetString(2),
+                        SKU = reader.IsDBNull(3) ? "" : reader.GetString(3),
+                        Barcode = reader.IsDBNull(4) ? "" : reader.GetString(4),
+                        VariantPrice = reader.IsDBNull(5) ? (decimal?)null : reader.GetDecimal(5),
+                        IsActive = reader.IsDBNull(6) ? true : reader.GetBoolean(6),
+                        CreatedBy = reader.IsDBNull(7) ? "" : reader.GetString(7),
+                        CreatedAt = reader.IsDBNull(8) ? DateTime.UtcNow : reader.GetDateTime(8),
+                        UpdatedBy = reader.IsDBNull(9) ? "" : reader.GetString(9),
+                        UpdatedAt = reader.IsDBNull(10) ? (DateTime?)null : reader.GetDateTime(10),
+                        StockQty = reader.IsDBNull(11) ? 0 : reader.GetInt32(11),
+
+                        // 2. Map the new column (Index 13 in SQL, because index starts at 0)
+                        // Index 12 is VPS_Price (which we skipped mapping in your original code), 
+                        // so ImageCount is at index 13.
+                        ImageCount = reader.IsDBNull(13) ? 0 : reader.GetInt32(13)
+                    };
+
+                    list.Add(variant);
+                }
+                reader.Close();
+            }
+
+            return list;
+        }
+        public int Insert(ProductVariant variant)
+        {
+            using SqlCommand cmd = GetSPCommand("InsertProductVariant");
+
+            // OUTPUT
+            AddParameter(cmd, pInt32Out(ProductVariantBase.Property_Id));
+
+            // COMMON PARAMS
+            AddParameter(cmd, pInt32(ProductVariantBase.Property_ProductId, variant.ProductId));
+            AddParameter(cmd, pNVarChar(ProductVariantBase.Property_VariantName, 150, variant.VariantName));
+            AddParameter(cmd, pNVarChar(ProductVariantBase.Property_SKU, 50, variant.SKU));
+            AddParameter(cmd, pNVarChar(ProductVariantBase.Property_Barcode, 100, variant.Barcode));
+            AddParameter(cmd, pDecimal(ProductVariantBase.Property_VariantPrice, variant.VariantPrice));
+            AddParameter(cmd, pBool(ProductVariantBase.Property_IsActive, true));
+            AddParameter(cmd, pNVarChar(ProductVariantBase.Property_CreatedBy, 100, variant.CreatedBy));
+            AddParameter(cmd, pDateTime(ProductVariantBase.Property_CreatedAt, variant.CreatedAt));
+            AddParameter(cmd, pNVarChar(ProductVariantBase.Property_UpdatedBy, 100, null));
+            AddParameter(cmd, pDateTime(ProductVariantBase.Property_UpdatedAt, null));
+
+            // IMPORTANT: MDUA uses InsertRecord()
+            long result = InsertRecord(cmd);
+
+            if (result > 0)
+                return (int)GetOutParameter(cmd, ProductVariantBase.Property_Id);
+
+            return 0;
+        }
+
+
+        public void InsertVariantAttributeValue(int variantId, int attributeValueId, int displayOrder)
+        {
+            string SQLQuery = @"
+        INSERT INTO VariantAttributeValue (VariantId, AttributeId, AttributeValueId, DisplayOrder)
+        SELECT @VariantId, AttributeId, Id, @DisplayOrder
+        FROM AttributeValue
+        WHERE Id = @AttributeValueId";
+
+            using SqlCommand cmd = GetSQLCommand(SQLQuery);
+
+            AddParameter(cmd, pInt32("VariantId", variantId));
+            AddParameter(cmd, pInt32("AttributeValueId", attributeValueId));
+            AddParameter(cmd, pInt32("DisplayOrder", displayOrder));
+
+            SqlDataReader reader;
+            // This executes the INSERT
+            SelectRecords(cmd, out reader);
+
+            reader.Close();
+            reader.Dispose();
+        }
+
+        public void UpdateVariantName(int variantId, string newName)
+        {
+            string SQLQuery = "UPDATE ProductVariant SET VariantName = @Name WHERE Id = @Id";
+
+            using (SqlCommand cmd = GetSQLCommand(SQLQuery))
+            {
+                AddParameter(cmd, pInt32("Id", variantId));
+                AddParameter(cmd, pNVarChar("Name", 150, newName));
+
+                UpdateRecord(cmd);
+            }
+        }
+
+
+        public ProductVariant GetWithStock(int id)
+        {
+            // We use inline SQL here to join the tables and get the stock
+            string SQLQuery = @"
+        SELECT 
+            v.Id,
+            v.ProductId,
+            v.VariantName,
+            v.SKU,
+            v.Barcode,
+            v.VariantPrice,
+            v.IsActive,
+            v.CreatedBy,
+            v.CreatedAt,
+            v.UpdatedBy,
+            v.UpdatedAt,
+            ISNULL(vps.StockQty, 0) AS StockQty,  -- Get Stock
+            ISNULL(vps.Price, 0) AS VPS_Price
+        FROM ProductVariant v
+        LEFT JOIN VariantPriceStock vps ON v.Id = vps.Id
+        WHERE v.Id = @Id";
+
+            using SqlCommand cmd = GetSQLCommand(SQLQuery);
+            AddParameter(cmd, pInt32("Id", id));
+
+            SqlDataReader reader;
+            SelectRecords(cmd, out reader);
+
+            ProductVariant variant = null;
+
+            using (reader)
+            {
+                if (reader.Read())
+                {
+                    // Manual mapping is required because the default FillObject() 
+                    // doesn't know about the joined columns
+                    variant = new ProductVariant
+                    {
+                        Id = reader.GetInt32(0),
+                        ProductId = reader.GetInt32(1),
+                        VariantName = reader.IsDBNull(2) ? "" : reader.GetString(2),
+                        SKU = reader.IsDBNull(3) ? "" : reader.GetString(3),
+                        Barcode = reader.IsDBNull(4) ? "" : reader.GetString(4),
+                        VariantPrice = reader.IsDBNull(5) ? (decimal?)null : reader.GetDecimal(5),
+                        IsActive = reader.IsDBNull(6) ? true : reader.GetBoolean(6),
+                        CreatedBy = reader.IsDBNull(7) ? "" : reader.GetString(7),
+                        CreatedAt = reader.IsDBNull(8) ? DateTime.UtcNow : reader.GetDateTime(8),
+                        UpdatedBy = reader.IsDBNull(9) ? "" : reader.GetString(9),
+                        UpdatedAt = reader.IsDBNull(10) ? (DateTime?)null : reader.GetDateTime(10),
+
+                        // ✅ THIS IS THE FIX: Read the stock column
+                        StockQty = reader.IsDBNull(11) ? 0 : reader.GetInt32(11)
+                    };
+                }
+                reader.Close();
+            }
+
+            return variant;
+        }
+    }
+}
+
+using System;
+using System.Data;
+using System.Data.SqlClient;
+
+using MDUA.Framework;
+using MDUA.Framework.Exceptions;
+using MDUA.Entities;
+using MDUA.Entities.Bases;
+using MDUA.Entities.List;
+
+namespace MDUA.DataAccess
+{
+	public partial class ProductAttributeDataAccess
+	{
+        public int Insert(ProductAttribute attribute)
+        {
+            // Calls the Stored Procedure you provided
+            using SqlCommand cmd = GetSPCommand("InsertProductAttribute");
+
+            // OUTPUT
+            AddParameter(cmd, pInt32Out(ProductAttributeBase.Property_Id));
+
+            // PARAMS
+            AddParameter(cmd, pInt32(ProductAttributeBase.Property_ProductId, attribute.ProductId));
+            AddParameter(cmd, pInt32(ProductAttributeBase.Property_AttributeId, attribute.AttributeId));
+            AddParameter(cmd, pInt32(ProductAttributeBase.Property_DisplayOrder, attribute.DisplayOrder));
+
+            long result = InsertRecord(cmd);
+
+            if (result > 0)
+                return (int)GetOutParameter(cmd, ProductAttributeBase.Property_Id);
+
+            return 0;
+        }
+    }	
+}
+using MDUA.DataAccess.Interface;
+using MDUA.Entities;
+using MDUA.Entities.Bases;
+using MDUA.Entities.List;
+using MDUA.Framework.DataAccess;
+using System;
+using System.Collections.Generic;
+using System.Data;
+using System.Data.SqlClient;
+
+namespace MDUA.DataAccess
+{
+    public partial class ProductVariantDataAccess : BaseDataAccess, IProductVariantDataAccess
+        {
+        /// <summary>
+        /// Inline SQL fallback for GetProductVariantsByProductId
+        /// Joins VariantPriceStock (vps) on v.Id = vps.Id to get stock (StockQty) and price if needed.
+        /// </summary>
+        public ProductVariantList GetProductVariantsByProductId(int productId)
+        {
+            // 1. Modified SQL: Added a subquery to count VariantImage rows
+            string SQLQuery = @"
+        SELECT 
+            v.Id,
+            v.ProductId,
+            v.VariantName,
+            v.SKU,
+            v.Barcode,
+            v.VariantPrice,
+            v.IsActive,
+            v.CreatedBy,
+            v.CreatedAt,
+            v.UpdatedBy,
+            v.UpdatedAt,
+            ISNULL(vps.StockQty, 0) AS StockQty,
+            ISNULL(vps.Price, 0) AS VPS_Price,
+            (SELECT COUNT(1) FROM VariantImage vi WHERE vi.VariantId = v.Id) AS ImageCount
+        FROM ProductVariant v
+        LEFT JOIN VariantPriceStock vps ON v.Id = vps.Id
+        WHERE v.ProductId = @ProductId
+        ORDER BY v.Id";
+
+            using SqlCommand cmd = GetSQLCommand(SQLQuery);
+            AddParameter(cmd, pInt32("ProductId", productId));
+
+            SqlDataReader reader;
+            long result = SelectRecords(cmd, out reader);
+            ProductVariantList list = new ProductVariantList();
+
+            using (reader)
+            {
+                while (reader.Read())
+                {
+                    var variant = new ProductVariant
+                    {
+                        Id = reader.GetInt32(0),
+                        ProductId = reader.GetInt32(1),
+                        VariantName = reader.IsDBNull(2) ? "" : reader.GetString(2),
+                        SKU = reader.IsDBNull(3) ? "" : reader.GetString(3),
+                        Barcode = reader.IsDBNull(4) ? "" : reader.GetString(4),
+                        VariantPrice = reader.IsDBNull(5) ? (decimal?)null : reader.GetDecimal(5),
+                        IsActive = reader.IsDBNull(6) ? true : reader.GetBoolean(6),
+                        CreatedBy = reader.IsDBNull(7) ? "" : reader.GetString(7),
+                        CreatedAt = reader.IsDBNull(8) ? DateTime.UtcNow : reader.GetDateTime(8),
+                        UpdatedBy = reader.IsDBNull(9) ? "" : reader.GetString(9),
+                        UpdatedAt = reader.IsDBNull(10) ? (DateTime?)null : reader.GetDateTime(10),
+                        StockQty = reader.IsDBNull(11) ? 0 : reader.GetInt32(11),
+
+                        // 2. Map the new column (Index 13 in SQL, because index starts at 0)
+                        // Index 12 is VPS_Price (which we skipped mapping in your original code), 
+                        // so ImageCount is at index 13.
+                        ImageCount = reader.IsDBNull(13) ? 0 : reader.GetInt32(13)
+                    };
+
+                    list.Add(variant);
+                }
+                reader.Close();
+            }
+
+            return list;
+        }
+        public int Insert(ProductVariant variant)
+        {
+            using SqlCommand cmd = GetSPCommand("InsertProductVariant");
+
+            // OUTPUT
+            AddParameter(cmd, pInt32Out(ProductVariantBase.Property_Id));
+
+            // COMMON PARAMS
+            AddParameter(cmd, pInt32(ProductVariantBase.Property_ProductId, variant.ProductId));
+            AddParameter(cmd, pNVarChar(ProductVariantBase.Property_VariantName, 150, variant.VariantName));
+            AddParameter(cmd, pNVarChar(ProductVariantBase.Property_SKU, 50, variant.SKU));
+            AddParameter(cmd, pNVarChar(ProductVariantBase.Property_Barcode, 100, variant.Barcode));
+            AddParameter(cmd, pDecimal(ProductVariantBase.Property_VariantPrice, variant.VariantPrice));
+            AddParameter(cmd, pBool(ProductVariantBase.Property_IsActive, true));
+            AddParameter(cmd, pNVarChar(ProductVariantBase.Property_CreatedBy, 100, variant.CreatedBy));
+            AddParameter(cmd, pDateTime(ProductVariantBase.Property_CreatedAt, variant.CreatedAt));
+            AddParameter(cmd, pNVarChar(ProductVariantBase.Property_UpdatedBy, 100, null));
+            AddParameter(cmd, pDateTime(ProductVariantBase.Property_UpdatedAt, null));
+
+            // IMPORTANT: MDUA uses InsertRecord()
+            long result = InsertRecord(cmd);
+
+            if (result > 0)
+                return (int)GetOutParameter(cmd, ProductVariantBase.Property_Id);
+
+            return 0;
+        }
+
+
+        public void InsertVariantAttributeValue(int variantId, int attributeValueId, int displayOrder)
+        {
+            string SQLQuery = @"
+        INSERT INTO VariantAttributeValue (VariantId, AttributeId, AttributeValueId, DisplayOrder)
+        SELECT @VariantId, AttributeId, Id, @DisplayOrder
+        FROM AttributeValue
+        WHERE Id = @AttributeValueId";
+
+            using SqlCommand cmd = GetSQLCommand(SQLQuery);
+
+            AddParameter(cmd, pInt32("VariantId", variantId));
+            AddParameter(cmd, pInt32("AttributeValueId", attributeValueId));
+            AddParameter(cmd, pInt32("DisplayOrder", displayOrder));
+
+            SqlDataReader reader;
+            // This executes the INSERT
+            SelectRecords(cmd, out reader);
+
+            reader.Close();
+            reader.Dispose();
+        }
+
+        public void UpdateVariantName(int variantId, string newName)
+        {
+            string SQLQuery = "UPDATE ProductVariant SET VariantName = @Name WHERE Id = @Id";
+
+            using (SqlCommand cmd = GetSQLCommand(SQLQuery))
+            {
+                AddParameter(cmd, pInt32("Id", variantId));
+                AddParameter(cmd, pNVarChar("Name", 150, newName));
+
+                UpdateRecord(cmd);
+            }
+        }
+
+
+        public ProductVariant GetWithStock(int id)
+        {
+            // We use inline SQL here to join the tables and get the stock
+            string SQLQuery = @"
+        SELECT 
+            v.Id,
+            v.ProductId,
+            v.VariantName,
+            v.SKU,
+            v.Barcode,
+            v.VariantPrice,
+            v.IsActive,
+            v.CreatedBy,
+            v.CreatedAt,
+            v.UpdatedBy,
+            v.UpdatedAt,
+            ISNULL(vps.StockQty, 0) AS StockQty,  -- Get Stock
+            ISNULL(vps.Price, 0) AS VPS_Price
+        FROM ProductVariant v
+        LEFT JOIN VariantPriceStock vps ON v.Id = vps.Id
+        WHERE v.Id = @Id";
+
+            using SqlCommand cmd = GetSQLCommand(SQLQuery);
+            AddParameter(cmd, pInt32("Id", id));
+
+            SqlDataReader reader;
+            SelectRecords(cmd, out reader);
+
+            ProductVariant variant = null;
+
+            using (reader)
+            {
+                if (reader.Read())
+                {
+                    // Manual mapping is required because the default FillObject() 
+                    // doesn't know about the joined columns
+                    variant = new ProductVariant
+                    {
+                        Id = reader.GetInt32(0),
+                        ProductId = reader.GetInt32(1),
+                        VariantName = reader.IsDBNull(2) ? "" : reader.GetString(2),
+                        SKU = reader.IsDBNull(3) ? "" : reader.GetString(3),
+                        Barcode = reader.IsDBNull(4) ? "" : reader.GetString(4),
+                        VariantPrice = reader.IsDBNull(5) ? (decimal?)null : reader.GetDecimal(5),
+                        IsActive = reader.IsDBNull(6) ? true : reader.GetBoolean(6),
+                        CreatedBy = reader.IsDBNull(7) ? "" : reader.GetString(7),
+                        CreatedAt = reader.IsDBNull(8) ? DateTime.UtcNow : reader.GetDateTime(8),
+                        UpdatedBy = reader.IsDBNull(9) ? "" : reader.GetString(9),
+                        UpdatedAt = reader.IsDBNull(10) ? (DateTime?)null : reader.GetDateTime(10),
+
+                        // ✅ THIS IS THE FIX: Read the stock column
+                        StockQty = reader.IsDBNull(11) ? 0 : reader.GetInt32(11)
+                    };
+                }
+                reader.Close();
+            }
+
+            return variant;
+        }
+    }
+}
+
