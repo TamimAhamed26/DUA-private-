@@ -363,19 +363,16 @@ namespace MDUA.DataAccess
                 if (cmd.Connection.State != System.Data.ConnectionState.Open)
                     cmd.Connection.Open();
 
-                // ✅ EXECUTE AND CHECK ROWS AFFECTED
                 int rowsAffected = cmd.ExecuteNonQuery();
 
-                // Close connection explicitly if not handled by framework
                 cmd.Connection.Close();
 
-                // 🛑 DEBUG TRAP: Throw error if no Order was found
                 if (rowsAffected == 0)
                 {
                     throw new Exception($"CRITICAL FAILURE: Tried to update Order #{orderId}, but database found 0 matching rows. The Order ID might be wrong or the Order doesn't exist.");
                 }
             }
-        } // <--- THIS WAS MISSING
+        } 
 
         public List<Dictionary<string, object>> GetVariantsForDropdown()
         {
@@ -728,16 +725,16 @@ namespace MDUA.DataAccess
             }
         }
 
-        // ✅ Diagnostic update that proves: DB name + rows updated + final status
+
+        //Changed
         public void UpdateStatusSafeLogged(int orderId, string status, bool confirmed)
         {
             string sql = @"
 UPDATE dbo.SalesOrderHeader
 SET Status = @Status,
     Confirmed = @Confirmed,
-    UpdatedAt = GETDATE()
-WHERE Id = @Id;
-
+UpdatedAt = @UpdatedAt 
+WHERE Id = @Id;  
 SELECT @@ROWCOUNT;";
 
             using (SqlCommand cmd = GetSQLCommand(sql))
@@ -745,16 +742,14 @@ SELECT @@ROWCOUNT;";
                 AddParameter(cmd, pInt32("Id", orderId));
                 AddParameter(cmd, pNVarChar("Status", 30, status));
                 AddParameter(cmd, pBool("Confirmed", confirmed));
-
+                AddParameter(cmd, new SqlParameter("@UpdatedAt", SqlDbType.DateTime) { Value = DateTime.UtcNow });
                 if (cmd.Connection.State != ConnectionState.Open)
                     cmd.Connection.Open();
 
                 var dbName = cmd.Connection.Database;
                 int rows = Convert.ToInt32(cmd.ExecuteScalar());
 
-                // ✅ prove which DB is being updated and whether it affected rows
 
-                // ✅ confirm what DB contains immediately after update
                 cmd.CommandText = "SELECT Status, Confirmed, UpdatedAt FROM dbo.SalesOrderHeader WHERE Id = @Id";
                 cmd.Parameters.Clear();
                 AddParameter(cmd, pInt32("Id", orderId));

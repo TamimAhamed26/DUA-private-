@@ -32,7 +32,7 @@ namespace MDUA.Web.UI.Controllers
         //  REAL-WORLD MESSAGE HANDLING (User -> DB -> SignalR -> AI -> DB -> SignalR)
         // ====================================================================
 
-  
+
 
         // ====================================================================
         //  EXISTING GET METHODS (Cleaned & Optimized)
@@ -187,9 +187,9 @@ namespace MDUA.Web.UI.Controllers
                 }
 
 
-             
-               
-                
+
+
+
 
                 return Ok(new { success = true });
             }
@@ -204,8 +204,8 @@ namespace MDUA.Web.UI.Controllers
         {
             // 1. Update session status
             session.Status = "Assigned"; // This stops the bot from replying
-            // Note: You'll need to add an Update method to ChatFacade if not present
-             _chatFacade.UpdateSessionStatus(session.Id, "Assigned");
+                                         // Note: You'll need to add an Update method to ChatFacade if not present
+            _chatFacade.UpdateSessionStatus(session.Id, "Assigned");
 
             // 2. Notify admins with URGENT flag
             string clientGroup = session.SessionGuid.ToString().ToLower();

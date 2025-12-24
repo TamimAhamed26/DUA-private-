@@ -1,10 +1,10 @@
 ﻿using DotNetEnv;
 using MDUA.Facade;
 using MDUA.Facade.Interface;
-  
-using MDUA.Web.UI.Hubs; 
+
+using MDUA.Web.UI.Hubs;
 using MDUA.Web.UI.Services;
-   
+
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using System.Security.Claims;

@@ -47,29 +47,35 @@ namespace MDUA.Web.UI.Services
             var sb = new StringBuilder();
 
             // 🔥 SYSTEM PROMPT with Instructions
+            // 🔥 MERGED SYSTEM PROMPT
             sb.AppendLine(@"You are MDUA Assistant, a helpful AI for MDUA - an e-commerce platform in Bangladesh.
 
- CAPABILITIES:
-✅ Search and recommend products
+⛔ STRICT DATA RULES (CRITICAL):
+1. You have access to a section called 'REAL-TIME DATA' below.
+2. ONLY recommend products listed in that data. Do NOT invent or hallucinate product names.
+3. If a product is NOT in the 'REAL-TIME DATA', explicitly say: 'I couldn't find that item in our catalog.'
+4. If data says 'Stock: 0', you MUST say it is currently out of stock.
+
+CAPABILITIES:
+✅ Search and recommend products (from provided data only)
 ✅ Check stock availability
 ✅ Explain prices and discounts
 ✅ Track orders by Order ID
 ✅ Guide customers through checkout
-✅ Answer delivery questions (Inside Dhaka: ৳60, Outside: ৳120)
+✅ Answer delivery questions
 
-IMPORTANT RULES:
-1. Be friendly, concise, and use emojis occasionally 😊
-2. When mentioning products, always include price in BDT (৳)
-3. If stock is 0, say 'Currently out of stock'
-4. If you need human help, say: 'Let me connect you with our support team for personalized assistance.'
-5. For order tracking, ask for the Order ID (format: ONXXXXXXXX or DOXXXXXXXX)
-6. Always format prices as: ৳1,500 (with commas)
+BUSINESS RULES & PRICING:
+1. Delivery Charge: Inside Dhaka: ৳60 | Outside Dhaka: ৳120 
+2. Prices: Always format as ৳1,500 (use commas).
+3. If a product is out of stock, you SHOULD still mention its price if known, but clearly state it is unavailable.
+4. Order Tracking: Ask for Order ID (format: ONXXXXXXXX or DOXXXXXXXX)[cite: 145].
+5. Human Handoff: If you cannot help, say: 'Let me connect you with our support team for personalized assistance.'
 
 RESPONSE STYLE:
+- Be friendly, concise, and use emojis occasionally 😊
 - Keep answers under 3 sentences when possible
 - Use bullet points for product lists
-- Be conversational, not robotic
-");
+- Be conversational, not robotic");
 
             // 🆕 DYNAMIC CONTEXT INJECTION
             string contextData = await GetRelevantContext(userMessage);
@@ -137,13 +143,43 @@ RESPONSE STYLE:
 
             try
             {
-                // 1️⃣ PRODUCT SEARCH
-                if (ContainsAny(lowerMsg, "product", "item", "buy", "purchase", "show", "find", "available", "stock", "price"))
+                // =========================================================
+                // 🆕 REPLACE THE OLD "PRODUCT SEARCH" BLOCK WITH YOUR NEW CODE HERE
+                // =========================================================
+
+                // 0️⃣ CHECK FOR GENERIC "SHOW PRODUCTS" QUERY
+                // If user asks "Show me available products" or "What do you have?", don't run a keyword search.
+                // Inside GetRelevantContext ...
+
+                // 0️⃣ GENERIC REQUEST (e.g. "List", "What is available")
+                bool isGenericRequest = ContainsAny(lowerMsg, "available products", "list", "what do you have", "show me items", "catalogue");
+
+                if (isGenericRequest)
                 {
+                    var trending = GetTrendingProducts();
+                    if (!string.IsNullOrEmpty(trending))
+                    {
+                        context.AppendLine("User asked for a list. Here are our top items:");
+                        context.AppendLine(trending);
+                    }
+                    else
+                    {
+                        // FAILSAFE: If trending is empty, tell AI to apologize
+                        context.AppendLine("User asked for a list, but no trending data was returned from DB.");
+                    }
+                }
+                // 1️⃣ SPECIFIC SEARCH (Only if NOT generic)
+                else if (ContainsAny(lowerMsg, "product", "item", "buy", "purchase", "find", "search", "price", "stock", "is "))
+                {
+                    // Added "is " to the keywords trigger
                     var productInfo = await GetProductContext(message);
                     if (!string.IsNullOrEmpty(productInfo))
                         context.AppendLine(productInfo);
                 }
+
+                // =========================================================
+                // 👇 KEEP THE REST OF THE EXISTING CODE BELOW UNTOUCHED
+                // =========================================================
 
                 // 2️⃣ ORDER TRACKING
                 if (ContainsAny(lowerMsg, "order", "track", "delivery", "shipped", "on", "do") &&
@@ -154,7 +190,7 @@ RESPONSE STYLE:
                         context.AppendLine(orderInfo);
                 }
 
-                // 3️⃣ LOW STOCK ALERTS (for recommendations)
+                // 3️⃣ LOW STOCK ALERTS (Optional: You can keep this for specific "recommend" keywords)
                 if (ContainsAny(lowerMsg, "recommend", "suggest", "popular", "trending", "best"))
                 {
                     var trending = GetTrendingProducts();
@@ -169,13 +205,11 @@ RESPONSE STYLE:
 
             return context.ToString();
         }
-
         // 📦 PRODUCT CONTEXT BUILDER
         private async Task<string> GetProductContext(string query)
         {
             try
             {
-                // Extract search keywords
                 var searchTerm = ExtractSearchTerm(query);
                 var products = _productFacade.SearchProducts(searchTerm);
 
@@ -183,39 +217,85 @@ RESPONSE STYLE:
                     return $"❌ No products found matching '{searchTerm}'";
 
                 var sb = new StringBuilder();
-                sb.AppendLine($"📦 **Products matching '{searchTerm}':**\n");
+                sb.AppendLine($"📦 **Search Results for '{searchTerm}':**\n");
 
                 int count = 0;
-                foreach (var p in products.Take(5)) // Limit to 5 results
+                foreach (var p in products.Take(5))
                 {
-                    count++;
-
-                    // Get variant stock info
-                    var variants = _productFacade.GetVariantsByProductId(p.Id);
-                    int totalStock = variants?.Sum(v => v.StockQty) ?? 0;
-
-                    string stockStatus = totalStock > 0 ? $"✅ In Stock ({totalStock} available)" : "❌ Out of Stock";
-
-                    // Get best discount
-                    var discount = _productFacade.GetBestDiscount(p.Id, p.BasePrice ?? 0);
-                    string priceDisplay = discount != null
-                        ? $"৳{p.SellingPrice:N0} (was ৳{p.BasePrice:N0})"
-                        : $"৳{p.BasePrice:N0}";
-
-                    sb.AppendLine($"{count}. **{p.ProductName}**");
-                    sb.AppendLine($"   Price: {priceDisplay}");
-                    sb.AppendLine($"   Stock: {stockStatus}");
-
-                    if (!string.IsNullOrEmpty(p.Description))
+                    try
                     {
-                        var desc = p.Description.Length > 100
-                            ? p.Description.Substring(0, 100) + "..."
-                            : p.Description;
+                        count++;
 
-                        sb.AppendLine($"   Description: {desc}");
+                        // 1. Get Variants
+                        var variants = _productFacade.GetVariantsByProductId(p.Id);
+
+                        // 2. Calculate Total Stock Safely
+                        int totalStock = 0;
+                        string variantDetails = "";
+
+                        if (variants != null && variants.Count > 0)
+                        {
+                            totalStock = variants.Sum(v => v.StockQty);
+
+                            // 3. DYNAMIC NAME BUILDING (Prevents Crashes)
+                            // We iterate and try to find a valid name property dynamically
+                            var vList = new List<string>();
+                            foreach (var v in variants)
+                            {
+                                // Try to read "VariantName", "Name", or "Title" dynamically
+                                // This fixes the "ProductVariant does not contain..." error
+                                string name = "Option";
+
+                                // Reflection check for properties
+                                var props = v.GetType().GetProperties();
+                                var nameProp = props.FirstOrDefault(x =>
+                                    x.Name.Equals("VariantName", StringComparison.OrdinalIgnoreCase) ||
+                                    x.Name.Equals("Name", StringComparison.OrdinalIgnoreCase) ||
+                                    x.Name.Equals("Title", StringComparison.OrdinalIgnoreCase) ||
+                                    x.Name.Equals("Size", StringComparison.OrdinalIgnoreCase)); // Fallback to Size if it exists
+
+                                if (nameProp != null)
+                                {
+                                    var val = nameProp.GetValue(v);
+                                    if (val != null) name = val.ToString();
+                                }
+
+                                vList.Add($"{name} ({v.StockQty})");
+                            }
+                            variantDetails = string.Join(", ", vList);
+                        }
+                        else
+                        {
+                            // No variants? Use product stock if available, or default to 0
+                            // Check if Product entity has a generic Stock property
+                            var pStock = p.GetType().GetProperty("StockQty")?.GetValue(p);
+                            if (pStock != null) totalStock = (int)pStock;
+                        }
+
+                        // 4. Formatting Output
+                        var discount = _productFacade.GetBestDiscount(p.Id, p.BasePrice ?? 0);
+                        string priceDisplay = discount != null
+                            ? $"৳{p.SellingPrice:N0} (was ৳{p.BasePrice:N0})"
+                            : $"৳{p.BasePrice:N0}";
+
+                        string stockStatus = totalStock > 0
+                            ? $"✅ In Stock ({totalStock} available)"
+                            : "❌ Out of Stock";
+
+                        sb.AppendLine($"{count}. **{p.ProductName}**");
+                        sb.AppendLine($"   Price: {priceDisplay}");
+                        sb.AppendLine($"   Stock: {stockStatus}");
+
+                        if (!string.IsNullOrEmpty(variantDetails))
+                            sb.AppendLine($"   Details: {variantDetails}");
+
+                        sb.AppendLine();
                     }
-
-                    sb.AppendLine();
+                    catch (Exception innerEx)
+                    {
+                        // If one product fails, log it but DON'T stop the loop
+                        sb.AppendLine($"   (Error loading details for {p.ProductName}: {innerEx.Message})\n");
+                    }
                 }
 
                 return sb.ToString();
@@ -225,7 +305,6 @@ RESPONSE STYLE:
                 return $"Error fetching products: {ex.Message}";
             }
         }
-
         // 📋 ORDER TRACKING CONTEXT
         private async Task<string> GetOrderContext(string message)
         {
@@ -268,43 +347,78 @@ RESPONSE STYLE:
         }
 
         // 🔥 TRENDING PRODUCTS
+        // 🔥 TRENDING / ALL PRODUCTS LIST
         private string GetTrendingProducts()
         {
             try
             {
-                var lowStock = _productFacade.GetLowStockVariants(5);
-
-                if (lowStock == null || lowStock.Count == 0)
-                    return "";
-
                 var sb = new StringBuilder();
-                sb.AppendLine("🔥 **Trending/Low Stock Items (Grab them fast!):**\n");
 
-                foreach (var item in lowStock)
+                // 1. Try to get ALL products (using a space " " to bypass empty-string checks)
+                var products = _productFacade.SearchProducts(" ");
+
+                // 2. If " " didn't work, try a very common letter like "a" or just null
+                if (products == null || products.Count == 0)
+                    products = _productFacade.SearchProducts("");
+
+                if (products == null || products.Count == 0)
+                    return ""; // Database is truly empty or search is broken
+
+                sb.AppendLine("🔥 **Top Available Products:**\n");
+
+                foreach (var p in products.Take(10))
                 {
-                    sb.AppendLine($"• {item.ProductName} - ৳{item.Price:N0} (Only {item.StockQty} left!)");
+                    // Simple display for the list
+                    sb.AppendLine($"• {p.ProductName} - ৳{p.SellingPrice:N0}");
                 }
 
                 return sb.ToString();
             }
-            catch
+            catch (Exception ex)
             {
-                return "";
+                return $"Error fetching list: {ex.Message}";
             }
         }
-
-        // 🔍 HELPER: Extract search keywords
         private string ExtractSearchTerm(string message)
         {
-            var stopWords = new[] { "show", "me", "find", "search", "for", "the", "a", "an", "want", "need", "looking", "any" };
-            var words = message.ToLower()
-                              .Split(new[] { ' ', ',', '?', '!' }, StringSplitOptions.RemoveEmptyEntries)
-                              .Where(w => !stopWords.Contains(w) && w.Length > 2);
+            // 1. Clean the message first (To Lower + Remove Punctuation)
+            // We replace punctuation with spaces to ensure words don't get stuck together (e.g., "stock?iphone" -> "stock iphone")
+            var sb = new StringBuilder();
+            foreach (char c in message.ToLower())
+            {
+                sb.Append(char.IsPunctuation(c) ? ' ' : c);
+            }
+            string cleanMessage = sb.ToString();
 
-            return string.Join(" ", words);
+            // 2. Define the "Stop Words" (Words to completely delete)
+            var stopWords = new HashSet<string>
+    {
+        "show", "me", "find", "search", "looking", "look", "for", "want", "need", "get",
+        "do", "you", "have", "is", "are", "can", "i", "buy", "purchase", "shop",
+        "price", "cost", "rate", "amount", "how", "much",
+        "stock", "available", "availability", "status", "count", "left", "many",
+        "details", "info", "information", "about", "desc", "description",
+        "product", "item", "unit", "article", "of", "the", "a", "an", "this", "that"
+    };
+
+            // 3. Split into words and filter
+            var words = cleanMessage.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+
+            var validWords = new List<string>();
+            foreach (var word in words)
+            {
+                if (!stopWords.Contains(word))
+                {
+                    validWords.Add(word);
+                }
+            }
+
+            // 4. Join back together
+            // Result: "dsadsa231 stock?" -> "dsadsa231"
+            // Result: "stock of dsadsa231" -> "dsadsa231"
+            // Result: "price for iphone 15" -> "iphone 15"
+            return string.Join(" ", validWords).Trim();
         }
-
-        // 🔍 HELPER: Check if message contains any keyword
         private bool ContainsAny(string text, params string[] keywords)
         {
             return keywords.Any(k => text.Contains(k));

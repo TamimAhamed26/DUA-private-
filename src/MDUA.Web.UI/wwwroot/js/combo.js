@@ -1237,12 +1237,7 @@ $(document).ready(function () {
                 success: function (response) {
                     console.log('✅ Message sent successfully');
 
-                    // If human handoff occurred, show notification
-                    if (response.handedOff) {
-                        appendCustomerMessage("System",
-                            "🔔 A support agent will join shortly.",
-                            'incoming');
-                    }
+                   
                 },
                 error: function (xhr, status, error) {
                     console.error('❌ Error sending message:', error);

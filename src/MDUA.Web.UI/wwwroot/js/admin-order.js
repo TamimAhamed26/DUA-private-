@@ -77,7 +77,26 @@
             productMap[pId].variants.push(v);
         }
     });
-
+    // ---------------------------------------------------------
+    if (document.getElementById('productSelect')) {
+        new TomSelect("#productSelect", {
+            create: false,                // Disable creating new items
+            sortField: {
+                field: "text",
+                direction: "asc"
+            },
+            placeholder: "Search Product...",
+            allowEmptyOption: true,
+            maxOptions: null,             // Show all results
+            onChange: function (value) {
+                // Manually trigger the 'change' event on the native select
+                // to ensure your existing variant logic runs
+                const event = new Event('change');
+                productSelect.dispatchEvent(event);
+            }
+        });
+    }
+    // -----------
     productSelect.addEventListener('change', function () {
         variantSelect.innerHTML = '<option value="" data-price="0">Select Variant...</option>';
         variantSelect.disabled = true;

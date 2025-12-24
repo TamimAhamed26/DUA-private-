@@ -1,0 +1,178 @@
+     [HttpPost]
+     public IActionResult UpdateStatus(int deliveryId, string status)
+     {
+         _orderFacade.UpdateDeliveryStatus(deliveryId, status);
+         return Json(new { success = true });
+     }       
+
+ public void UpdateDeliveryStatus(int deliveryId, string newStatus)
+        {
+
+            var delivery = _deliveryDataAccess.GetExtended(deliveryId);
+
+            if (delivery == null) throw new Exception("Delivery not found");
+            if (delivery.SalesOrderId <= 0) throw new Exception("Data Error: Delivery has no Sales Order ID.");
+            bool isOrderConfirmed = false;
+            if (_salesOrderHeaderDataAccess is MDUA.DataAccess.SalesOrderHeaderDataAccess concreteDA)
+            {
+                isOrderConfirmed = concreteDA.GetConfirmedFlag(delivery.SalesOrderId);
+            }
+            else
+            {
+                // Fallback if interface doesn't support GetConfirmedFlag
+                var order = _salesOrderHeaderDataAccess.Get(delivery.SalesOrderId);
+                isOrderConfirmed = order != null && (order.Confirmed || order.Status == "Confirmed");
+            }
+
+            if (!isOrderConfirmed)
+            {
+                throw new Exception("Action Denied: You cannot update delivery status while the Sales Order is still Draft/Pending. Please confirm the order first.");
+            }
+            // 2) Update Delivery
+            delivery.Status = newStatus;
+            if (newStatus.Equals("Delivered", StringComparison.OrdinalIgnoreCase))
+                delivery.ActualDeliveryDate = DateTime.UtcNow;
+
+            _deliveryDataAccess.UpdateExtended(delivery);
+
+            // 3) Map Delivery -> SOH.Status
+            string parentStatus = null;
+            string cleanStatus = (newStatus ?? "").ToLower().Trim();
+
+            if (cleanStatus == "pending") parentStatus = "Draft";
+            else if (cleanStatus == "shipped" || cleanStatus == "in transit" || cleanStatus == "out for delivery") parentStatus = "Shipped";
+            else if (cleanStatus == "delivered") parentStatus = "Delivered";
+            else if (cleanStatus == "returned" || cleanStatus == "returned to hub") parentStatus = "Returned";
+            else if (cleanStatus == "cancelled") parentStatus = "Cancelled";
+
+
+            // 4) Sync SalesOrderHeader
+            // 4. Update SalesOrderHeader (Sync)
+            if (parentStatus != null)
+            {
+                bool confirmedState = false;
+
+                if (_salesOrderHeaderDataAccess is MDUA.DataAccess.SalesOrderHeaderDataAccess concrete)
+                    confirmedState = concrete.GetConfirmedFlag(delivery.SalesOrderId);
+
+
+                try
+                {
+                    // ✅ use the diagnostic updater (proves DB + rowsAffected)
+                    if (_salesOrderHeaderDataAccess is MDUA.DataAccess.SalesOrderHeaderDataAccess concrete2)
+                        concrete2.UpdateStatusSafeLogged(delivery.SalesOrderId, parentStatus, confirmedState);
+                    else
+                        _salesOrderHeaderDataAccess.UpdateStatusSafe(delivery.SalesOrderId, parentStatus, confirmedState);
+
+                }
+                catch (Exception ex)
+                {
+                    throw;
+                }
+            }
+        }
+        public Delivery GetExtended(int id)
+        {
+            using (SqlCommand cmd = GetSQLCommand(SP_GET_BY_ID_EXT))
+            {
+                cmd.CommandType = CommandType.StoredProcedure;
+                cmd.Parameters.Add(new SqlParameter("@Id", SqlDbType.Int) { Value = id });
+
+                if (cmd.Connection.State != ConnectionState.Open)
+                    cmd.Connection.Open();
+
+                using (SqlDataReader reader = cmd.ExecuteReader())
+                {
+                    if (reader.Read())
+                    {
+                        return FillObjectExtended(reader);
+                    }
+                }
+            }
+            return null;
+        }
+        public bool GetConfirmedFlag(int orderId)
+        {
+            string sql = "SELECT Confirmed FROM dbo.SalesOrderHeader WHERE Id = @Id";
+
+            using (SqlCommand cmd = GetSQLCommand(sql))
+            {
+                AddParameter(cmd, pInt32("Id", orderId));
+
+                if (cmd.Connection.State != ConnectionState.Open)
+                    cmd.Connection.Open();
+
+                object val = cmd.ExecuteScalar();
+                cmd.Connection.Close();
+
+                if (val == null || val == DBNull.Value) return false;
+                return Convert.ToBoolean(val);
+            }
+        }
+        public void UpdateStatusSafeLogged(int orderId, string status, bool confirmed)
+        {
+            string sql = @"
+UPDATE dbo.SalesOrderHeader
+SET Status = @Status,
+    Confirmed = @Confirmed,
+UpdatedAt = @UpdatedAt 
+
+SELECT @@ROWCOUNT;";
+
+            using (SqlCommand cmd = GetSQLCommand(sql))
+            {
+                AddParameter(cmd, pInt32("Id", orderId));
+                AddParameter(cmd, pNVarChar("Status", 30, status));
+                AddParameter(cmd, pBool("Confirmed", confirmed));
+                AddParameter(cmd, new SqlParameter("@UpdatedAt", SqlDbType.DateTime) { Value = DateTime.UtcNow });
+                if (cmd.Connection.State != ConnectionState.Open)
+                    cmd.Connection.Open();
+
+                var dbName = cmd.Connection.Database;
+                int rows = Convert.ToInt32(cmd.ExecuteScalar());
+
+
+                cmd.CommandText = "SELECT Status, Confirmed, UpdatedAt FROM dbo.SalesOrderHeader WHERE Id = @Id";
+                cmd.Parameters.Clear();
+                AddParameter(cmd, pInt32("Id", orderId));
+
+  
+
+                cmd.Connection.Close();
+
+                if (rows == 0)
+                    throw new Exception($"SOH update affected 0 rows. Wrong DB or invalid orderId={orderId}.");
+            }
+        }
+        public void UpdateStatusSafe(int orderId, string status, bool confirmed)
+        {
+            string SQLQuery = @"
+            UPDATE [dbo].[SalesOrderHeader]
+            SET 
+                [Status] = @Status,
+                [Confirmed] = @Confirmed,
+                [UpdatedAt] = GETDATE()
+            WHERE [Id] = @Id";
+
+            using (SqlCommand cmd = GetSQLCommand(SQLQuery))
+            {
+                AddParameter(cmd, pInt32("Id", orderId));
+                AddParameter(cmd, pNVarChar("Status", 30, status));
+                AddParameter(cmd, pBool("Confirmed", confirmed));
+
+                if (cmd.Connection.State != System.Data.ConnectionState.Open)
+                    cmd.Connection.Open();
+
+                // ✅ EXECUTE AND CHECK ROWS AFFECTED
+                int rowsAffected = cmd.ExecuteNonQuery();
+
+                // Close connection explicitly if not handled by framework
+                cmd.Connection.Close();
+
+                // 🛑 DEBUG TRAP: Throw error if no Order was found
+                if (rowsAffected == 0)
+                {
+                    throw new Exception($"CRITICAL FAILURE: Tried to update Order #{orderId}, but database found 0 matching rows. The Order ID might be wrong or the Order doesn't exist.");
+                }
+            }
+        } // <--- THIS WAS MISSING
