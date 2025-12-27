@@ -10,6 +10,10 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Security.Claims;
+using Fido2NetLib;
+using Fido2NetLib.Objects;
+using System.Text;
+using System.Linq;
 
 namespace MDUA.Web.UI.Controllers
 {
@@ -19,12 +23,18 @@ namespace MDUA.Web.UI.Controllers
         private readonly ISettingsFacade _settingsFacade;
         private readonly IPaymentFacade _paymentFacade;
         private readonly IUserLoginFacade _userLoginFacade;
-        public SettingsController(ISettingsFacade settingsFacade, IPaymentFacade paymentFacade, IUserLoginFacade userLoginFacade)
+        private readonly IFido2 _fido2;
+
+        public SettingsController(
+            ISettingsFacade settingsFacade,
+            IPaymentFacade paymentFacade,
+            IUserLoginFacade userLoginFacade,
+            IFido2 fido2)
         {
             _settingsFacade = settingsFacade;
             _paymentFacade = paymentFacade;
             _userLoginFacade = userLoginFacade;
-
+            _fido2 = fido2;
         }
 
         [HttpGet]
@@ -80,24 +90,18 @@ namespace MDUA.Web.UI.Controllers
             }
         }
 
-        // ✅ NEW: Security Settings Page
-        [HttpGet]
-        // No changes needed here, but ensure this is your code:
+        //  Security Settings Page
+
         [HttpGet]
         public IActionResult Security()
         {
-            var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier);
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier);
             if (userIdClaim == null) return RedirectToAction("LogIn", "Account");
-
             int userId = int.Parse(userIdClaim.Value);
-
-            // Now this returns the User with IsTwoFactorEnabled = true
             var userResult = _userLoginFacade.GetUserLoginById(userId);
-
-            // This will now be TRUE
+            // 1. 2FA Status
             ViewBag.IsTwoFactorEnabled = userResult.UserLogin.IsTwoFactorEnabled;
 
-            // The QR code logic will be skipped if enabled
             if (!userResult.UserLogin.IsTwoFactorEnabled)
             {
                 var setupInfo = _userLoginFacade.SetupTwoFactor(userResult.UserLogin.UserName);
@@ -105,9 +109,40 @@ namespace MDUA.Web.UI.Controllers
                 ViewBag.QrCodeImage = $"https://api.qrserver.com/v1/create-qr-code/?size=200x200&data={Uri.EscapeDataString(setupInfo.qrCodeUri)}";
             }
 
+            // 2. Passkey Status (Check if user has any keys)
+            var passkeys = _userLoginFacade.GetPasskeysByUserId(userId);
+            ViewBag.HasPasskeys = passkeys != null && passkeys.Any();
+
             return View();
         }
-        // ✅ NEW: Enable 2FA Action
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public IActionResult DisablePasskeys()
+        {
+            try
+            {
+                var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier).Value);
+
+                // Get all keys
+                var keys = _userLoginFacade.GetPasskeysByUserId(userId);
+
+                // Delete them one by one (or use a DeleteAll SP if you have one)
+                foreach (var key in keys)
+                {
+                    // Ensure DeleteUserPasskey is exposed in your Facade/DA
+                    _userLoginFacade.DeleteUserPasskey(key.Id);
+                }
+
+                return Json(new { success = true, message = "All passkeys removed." });
+            }
+            catch (Exception ex)
+            {
+                return Json(new { success = false, message = ex.Message });
+            }
+        }
+
+        //  Enable 2FA 
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> EnableTwoFactor(string entryKey, string code)
@@ -196,6 +231,100 @@ namespace MDUA.Web.UI.Controllers
 
             // 5. Redirect to the 2FA Verify Screen
             return RedirectToAction("VerifyReset2FA", "Account");
+        }
+   
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public IActionResult MakeCredentialOptions()
+        {
+            try
+            {
+                var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier).Value);
+                var user = _userLoginFacade.Get(userId);
+
+                var existingKeys = _userLoginFacade
+                    .GetPasskeysByUserId(userId)
+                    .Select(k => new PublicKeyCredentialDescriptor(k.CredentialId))
+                    .ToList();
+
+                var fidoUser = new Fido2User
+                {
+                    Id = Encoding.UTF8.GetBytes(user.Id.ToString()),
+                    Name = user.Email,
+                    DisplayName = user.UserName
+                };
+
+                var options = _fido2.RequestNewCredential(
+                    new RequestNewCredentialParams
+                    {
+                        User = fidoUser,
+                        ExcludeCredentials = existingKeys,
+                        AuthenticatorSelection = new AuthenticatorSelection
+                        {
+                            ResidentKey = ResidentKeyRequirement.Preferred,
+                            UserVerification = UserVerificationRequirement.Preferred
+                        },
+                        AttestationPreference = AttestationConveyancePreference.None
+                    }
+                );
+
+                HttpContext.Session.SetString("fido2.attestationOptions", options.ToJson());
+
+                return Content(options.ToJson(), "application/json");
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken] 
+        public async Task<IActionResult> MakeCredential([FromBody] AuthenticatorAttestationRawResponse attestationResponse)
+        {
+            try
+            {
+                var jsonOptions = HttpContext.Session.GetString("fido2.attestationOptions");
+                if (string.IsNullOrEmpty(jsonOptions)) return BadRequest(new { message = "Session expired" });
+
+                var options = CredentialCreateOptions.FromJson(jsonOptions);
+
+                // 1. Verify
+                var result = await _fido2.MakeNewCredentialAsync(
+                    new MakeNewCredentialParams
+                    {
+                        AttestationResponse = attestationResponse,
+                        OriginalOptions = options,
+                        IsCredentialIdUniqueToUserCallback = (args, cancellationToken) =>
+                        {
+                            var exists = _userLoginFacade.GetPasskeyByCredentialId(args.CredentialId) != null;
+                            return Task.FromResult(!exists);
+                        }
+                    }
+                );
+
+                // 2. Save to DB (FIXED: Removed .Result property usage)
+                var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier).Value);
+
+                _userLoginFacade.AddUserPasskey(new MDUA.Entities.UserPasskey
+                {
+                    UserId = userId,
+                    CredentialId = result.Id,          // ✅ Was result.Result.CredentialId
+                    PublicKey = result.PublicKey,      // ✅ Was result.Result.PublicKey
+                    SignatureCounter = (int)result.SignCount, // ✅ Was result.Result.SignCount
+                    CredType = "public-key",
+                    RegDate = DateTime.UtcNow,
+                    AaGuid = result.AaGuid             // ✅ Was result.Result.Aaguid
+                });
+
+                HttpContext.Session.Remove("fido2.attestationOptions");
+
+                return Json(new { success = true });
+            }
+            catch (Exception ex)
+            {
+                return Json(new { success = false, message = ex.Message });
+            }
         }
     }
 }

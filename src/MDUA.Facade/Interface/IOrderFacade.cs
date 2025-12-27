@@ -7,8 +7,7 @@ namespace MDUA.Facade.Interface
 {
     public interface IOrderFacade : ICommonFacade<SalesOrderHeader, SalesOrderHeaderList, SalesOrderHeaderBase>
     {
-        string PlaceGuestOrder(SalesOrderHeader orderData);
-        Customer GetCustomerByPhone(string phone);
+        Task<string> PlaceGuestOrder(SalesOrderHeader orderData);        Customer GetCustomerByPhone(string phone);
         PostalCodes GetPostalCodeDetails(string code);
         Customer GetCustomerByEmail(string email);
         (Customer customer, Address address) GetCustomerDetailsForAutofill(string phone);
