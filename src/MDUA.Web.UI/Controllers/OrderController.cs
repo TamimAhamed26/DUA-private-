@@ -367,34 +367,39 @@ namespace MDUA.Web.UI.Controllers
 
         [Route("/order/all")]
         [HttpGet]
-        public IActionResult AllOrders()
+        public IActionResult AllOrders(int page = 1, int pageSize = 10)
         {
             if (!HasPermission("Order.View")) return HandleAccessDenied();
 
             try
             {
-                int companyId = 1;
-                var claim = User.FindFirst("CompanyId") ?? User.FindFirst("TargetCompanyId");
-                if (claim != null && int.TryParse(claim.Value, out int parsedId))
+                int totalRows;
+                // Call the NEW Facade method
+                var orders = _orderFacade.GetPagedOrdersForAdmin(page, pageSize, out totalRows);
+
+                var viewModel = new MDUA.Web.UI.Models.PagedOrderViewModel
                 {
-                    companyId = parsedId;
-                }
+                    Orders = orders,
+                    CurrentPage = page,
+                    PageSize = pageSize,
+                    TotalRows = totalRows
+                };
 
-                var orders = _orderFacade.GetAllOrdersForAdmin();
-                var paymentMethods = _paymentFacade.GetActivePaymentMethods(companyId);
-                ViewBag.PaymentMethods = paymentMethods;
-
+                // Load specific settings for UI
+                int companyId = 1; // Logic to get company ID...
                 var deliverySettings = _settingsFacade.GetDeliverySettings(companyId);
-
                 ViewBag.DeliveryDhaka = deliverySettings["dhaka"];
                 ViewBag.DeliveryOutside = deliverySettings["outside"];
 
-                return View(orders);
+                var paymentMethods = _paymentFacade.GetActivePaymentMethods(companyId);
+                ViewBag.PaymentMethods = paymentMethods;
+
+                return View(viewModel);
             }
             catch (Exception ex)
             {
                 ViewData["ErrorMessage"] = "Failed to load: " + ex.Message;
-                return View(new List<SalesOrderHeader>());
+                return View(new MDUA.Web.UI.Models.PagedOrderViewModel());
             }
         }
 

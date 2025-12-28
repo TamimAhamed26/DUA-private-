@@ -762,5 +762,89 @@ SELECT @@ROWCOUNT;";
                     throw new Exception($"SOH update affected 0 rows. Wrong DB or invalid orderId={orderId}.");
             }
         }
+
+        // In MDUA.DataAccess/SalesOrderHeaderDataAccess.Partial.cs
+
+        public SalesOrderHeaderList GetPagedOrdersExtended(int pageIndex, int pageSize, out int totalRows)
+        {
+            SalesOrderHeaderList list = new SalesOrderHeaderList();
+            totalRows = 0;
+
+            using (SqlCommand cmd = GetSPCommand("GetPagedSalesOrderHeader"))
+            {
+                // Inputs
+                AddParameter(cmd, pInt32("PageIndex", pageIndex));
+                AddParameter(cmd, pInt32("RowPerPage", pageSize));
+                AddParameter(cmd, pNVarChar("WhereClause", 4000, "")); // Optional
+                AddParameter(cmd, pNVarChar("SortColumn", 128, "OrderDate"));
+                AddParameter(cmd, pNVarChar("SortOrder", 4, "DESC"));
+
+                // Output
+                SqlParameter pTotal = new SqlParameter("@TotalRows", SqlDbType.Int);
+                pTotal.Direction = ParameterDirection.Output;
+                cmd.Parameters.Add(pTotal);
+
+                SqlDataReader reader;
+                SelectRecords(cmd, out reader);
+
+                using (reader)
+                {
+                    while (reader.Read())
+                    {
+                        SalesOrderHeader order = new SalesOrderHeader();
+                        int i = 0;
+
+                        // 1. Base Fields
+                        order.Id = reader.GetInt32(i++);
+                        order.CompanyCustomerId = reader.GetInt32(i++);
+                        order.AddressId = reader.GetInt32(i++);
+                        order.SalesChannelId = reader.GetInt32(i++);
+                        order.OnlineOrderId = reader.IsDBNull(i) ? null : reader.GetString(i); i++;
+                        order.DirectOrderId = reader.IsDBNull(i) ? null : reader.GetString(i); i++;
+                        order.OrderDate = reader.GetDateTime(i++);
+                        order.TotalAmount = reader.GetDecimal(i++);
+                        order.DiscountAmount = reader.GetDecimal(i++);
+                        order.NetAmount = reader.GetDecimal(i++);
+                        order.SessionId = reader.IsDBNull(i) ? null : reader.GetString(i); i++;
+                        order.IPAddress = reader.IsDBNull(i) ? null : reader.GetString(i); i++;
+                        order.Status = reader.GetString(i++);
+                        order.IsActive = reader.GetBoolean(i++);
+                        order.Confirmed = reader.GetBoolean(i++);
+                        order.CreatedBy = reader.IsDBNull(i) ? null : reader.GetString(i); i++;
+                        order.CreatedAt = reader.GetDateTime(i++);
+                        order.UpdatedBy = reader.IsDBNull(i) ? null : reader.GetString(i); i++;
+                        order.UpdatedAt = reader.IsDBNull(i) ? (DateTime?)null : reader.GetDateTime(i); i++;
+                        order.SalesOrderId = reader.IsDBNull(i) ? null : reader.GetString(i); i++;
+
+                        // 2. Extended Fields
+                        order.Street = reader.GetString(i++);
+                        order.City = reader.GetString(i++);
+                        order.Divison = reader.GetString(i++);
+                        order.Thana = reader.GetString(i++);
+                        order.SubOffice = reader.GetString(i++);
+                        order.PostalCode = reader.GetString(i++);
+                        order.Country = reader.GetString(i++);
+
+                        order.CustomerName = reader.GetString(i++);
+                        order.CustomerPhone = reader.GetString(i++);
+                        order.CustomerEmail = reader.GetString(i++);
+
+                        order.PaidAmount = reader.GetDecimal(i++);
+                        order.DueAmount = reader.GetDecimal(i++);
+
+                        list.Add(order);
+                    }
+                    reader.Close();
+                }
+
+                // Retrieve output after reader is closed
+                if (cmd.Parameters["@TotalRows"].Value != DBNull.Value)
+                {
+                    totalRows = Convert.ToInt32(cmd.Parameters["@TotalRows"].Value);
+                }
+            }
+            return list;
+        }
+
     }
 }

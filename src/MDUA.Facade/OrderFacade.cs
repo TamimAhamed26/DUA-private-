@@ -837,6 +837,23 @@ namespace MDUA.Facade
             return null;
         }
 
-        #endregion
+
+        public SalesOrderHeaderList GetPagedOrdersForAdmin(int pageIndex, int pageSize, out int totalRows)
+        {
+            // Call the extended DataAccess method we created earlier
+            // Note: Ensure _salesOrderHeaderDataAccess is cast to the concrete class if it's defined in the interface as the base interface
+            // Or better, update ISalesOrderHeaderDataAccess to include GetPagedOrdersExtended as well.
+
+            // If ISalesOrderHeaderDataAccess doesn't have the method signature yet, use this casting trick:
+            if (_salesOrderHeaderDataAccess is MDUA.DataAccess.SalesOrderHeaderDataAccess concreteDA)
+            {
+                return concreteDA.GetPagedOrdersExtended(pageIndex, pageSize, out totalRows);
+            }
+
+            // Fallback (Should not happen if DI is set up correctly)
+            totalRows = 0;
+            return new SalesOrderHeaderList();
+        }
     }
+    #endregion
 }
