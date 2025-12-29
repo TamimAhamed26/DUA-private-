@@ -70,6 +70,7 @@ namespace MDUA.Facade
 
             services.AddScoped<IDeliveryDataAccess, DeliveryDataAccess>();
             services.AddScoped<IDeliveryItemDataAccess, DeliveryItemDataAccess>();
+            services.AddScoped<IDeliveryStatusLogDataAccess, DeliveryStatusLogDataAccess>();
 
 
             // Facade Layer
@@ -94,6 +95,8 @@ namespace MDUA.Facade
             // ✅ ADDED THIS (Required for OrderController)
             services.AddScoped<IPaymentFacade, PaymentFacade>();
            // services.AddScoped<ISmsService, SmsService>();
+           services.AddScoped<IDeliveryStatusLogFacade, DeliveryStatusLogFacade>();
+
         }
     }
 }

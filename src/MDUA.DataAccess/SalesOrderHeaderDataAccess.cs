@@ -9,10 +9,11 @@ using MDUA.Framework.Exceptions;
 using MDUA.Entities;
 using MDUA.Entities.Bases;
 using MDUA.Entities.List;
+using MDUA.DataAccess.Interface;
 
 namespace MDUA.DataAccess
 {
-    public partial class SalesOrderHeaderDataAccess
+    public partial class SalesOrderHeaderDataAccess  
     {
         public long InsertSalesOrderHeaderSafe(SalesOrderHeader order)
         {
@@ -77,7 +78,7 @@ namespace MDUA.DataAccess
                     + [DiscountAmount]
                     + @Delivery
                 ),
-                [UpdatedAt] = GETDATE()
+                [UpdatedAt] = GETUTCDATE()
                 WHERE [Id] = @Id";
 
             using (SqlCommand cmd = GetSQLCommand(SQLQuery))
@@ -94,7 +95,7 @@ namespace MDUA.DataAccess
             string SQLQuery = @"
                 UPDATE [dbo].[SalesOrderHeader] 
                 SET [TotalAmount] = @Total, 
-                    [UpdatedAt] = GETDATE() 
+                    [UpdatedAt] = GETUTCDATE() 
                 WHERE [Id] = @Id";
 
             using (SqlCommand cmd = GetSQLCommand(SQLQuery))
@@ -351,7 +352,7 @@ namespace MDUA.DataAccess
             SET 
                 [Status] = @Status,
                 [Confirmed] = @Confirmed,
-                [UpdatedAt] = GETDATE()
+                [UpdatedAt] = GETUTCDATE()
             WHERE [Id] = @Id";
 
             using (SqlCommand cmd = GetSQLCommand(SQLQuery))
@@ -372,7 +373,7 @@ namespace MDUA.DataAccess
                     throw new Exception($"CRITICAL FAILURE: Tried to update Order #{orderId}, but database found 0 matching rows. The Order ID might be wrong or the Order doesn't exist.");
                 }
             }
-        } 
+        }
 
         public List<Dictionary<string, object>> GetVariantsForDropdown()
         {
@@ -464,7 +465,7 @@ namespace MDUA.DataAccess
                     (SELECT ISNULL(SUM(TotalAmount - DiscountAmount), 0) FROM SalesOrderHeader WHERE Status = 'Confirmed') as TotalRevenue,
                     (SELECT COUNT(*) FROM SalesOrderHeader) as TotalOrders,
                     (SELECT COUNT(*) FROM SalesOrderHeader WHERE Status IN ('Draft', 'Pending')) as PendingOrders,
-                    (SELECT COUNT(*) FROM SalesOrderHeader WHERE CAST(OrderDate AS DATE) = CAST(GETDATE() AS DATE)) as TodayOrders,
+                    (SELECT COUNT(*) FROM SalesOrderHeader WHERE CAST(OrderDate AS DATE) = CAST(GETUTCDATE() AS DATE)) as TodayOrders,
                     (SELECT COUNT(*) FROM Customer WHERE IsActive = 1) as TotalCustomers";
 
             using (SqlCommand cmd = GetSQLCommand(SQLQuery))
@@ -548,7 +549,7 @@ namespace MDUA.DataAccess
                     SUM(TotalAmount - DiscountAmount) as Value,
                     MIN(OrderDate) as SortDate
                 FROM SalesOrderHeader
-                WHERE OrderDate >= DATEADD(month, -@Months, GETDATE())
+                WHERE OrderDate >= DATEADD(month, -@Months, GETUTCDATE())
                   AND Status != 'Cancelled'
                 GROUP BY YEAR(OrderDate), MONTH(OrderDate), DATENAME(month, OrderDate)
                 ORDER BY MIN(OrderDate)";
@@ -599,7 +600,7 @@ namespace MDUA.DataAccess
 
         public void UpdateNetAmountSafe(int orderId, decimal newNetAmount)
         {
-            string SQLQuery = @"UPDATE [dbo].[SalesOrderHeader] SET [NetAmount] = @Net, [UpdatedAt] = GETDATE() WHERE [Id] = @Id";
+            string SQLQuery = @"UPDATE [dbo].[SalesOrderHeader] SET [NetAmount] = @Net, [UpdatedAt] = GETUTCDATE() WHERE [Id] = @Id";
 
             using (SqlCommand cmd = GetSQLCommand(SQLQuery))
             {
@@ -754,7 +755,7 @@ SELECT @@ROWCOUNT;";
                 cmd.Parameters.Clear();
                 AddParameter(cmd, pInt32("Id", orderId));
 
-  
+
 
                 cmd.Connection.Close();
 
@@ -765,17 +766,19 @@ SELECT @@ROWCOUNT;";
 
         // In MDUA.DataAccess/SalesOrderHeaderDataAccess.Partial.cs
 
-        public SalesOrderHeaderList GetPagedOrdersExtended(int pageIndex, int pageSize, out int totalRows)
+        public SalesOrderHeaderList GetPagedOrdersExtended(int pageIndex, int pageSize, string whereClause, out int totalRows)
         {
             SalesOrderHeaderList list = new SalesOrderHeaderList();
             totalRows = 0;
 
             using (SqlCommand cmd = GetSPCommand("GetPagedSalesOrderHeader"))
             {
-                // Inputs
                 AddParameter(cmd, pInt32("PageIndex", pageIndex));
                 AddParameter(cmd, pInt32("RowPerPage", pageSize));
-                AddParameter(cmd, pNVarChar("WhereClause", 4000, "")); // Optional
+
+                // Inject the dynamic WhereClause here
+                AddParameter(cmd, pNVarChar("WhereClause", 4000, whereClause));
+
                 AddParameter(cmd, pNVarChar("SortColumn", 128, "OrderDate"));
                 AddParameter(cmd, pNVarChar("SortOrder", 4, "DESC"));
 
