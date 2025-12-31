@@ -106,8 +106,10 @@
                                 </td>
 
                                 <td>
-                                    @if (log.SalesOrderId > 0){
-                                        <a href="/Order/All?highlightId=@log.SalesOrderId" class="fw-bold text-decoration-none font-monospace">
+                                    @if (log.SalesOrderId > 0)
+                                    {
+                                        <a href="@Url.Action("GoToOrder", "Order", new { orderId = log.SalesOrderId })"
+                                           class="fw-bold text-decoration-none font-monospace">
                                             #@log.SalesOrderId
                                         </a>
                                     }
